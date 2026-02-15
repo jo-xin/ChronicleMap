@@ -1,0 +1,25 @@
+[project]
+name = "chroniclemap"
+version = "0.0.0"
+description = "ChronicleMap: historical map replayer"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+dependencies = []
+
+[tool.poetry]
+packages = [{ include = "chroniclemap" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+pytest-cov = "^4.0"
+black = "^24.0"
+isort = "^5.12"
+# ruff pin to a known available version on PyPI
+ruff = "^0.15.0"
+mypy = "^1.2"
+pre-commit = "^3.0"
+coverage = "^7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

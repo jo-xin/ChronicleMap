@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Poetry/venv
+.env
+.venv
+venv/
+poetry.lock
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PyCharm
+.idea/
+
+# Data (不要把大量图片推到 git 仓库，使用外部目录或 Git LFS)
+ChronicleMap_Data/
