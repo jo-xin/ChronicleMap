@@ -175,7 +175,7 @@ class TesseractOCRProvider(OCRProvider):
 
     def __init__(
         self,
-        lang: str = "eng",
+        lang: str = "chi_sim+eng",
         tesseract_cmd: Optional[str] = None,
         preprocess_threshold: bool = True,
     ):

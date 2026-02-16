@@ -1,5 +1,6 @@
 # tests/test_ocr_tesseract_integration.py
 
+import pytesseract  # noqa: F401
 import pytest
 from PIL import Image, ImageDraw
 
