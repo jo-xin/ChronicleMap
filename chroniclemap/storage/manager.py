@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 from PIL import Image
 
@@ -12,6 +12,7 @@ from chroniclemap.core.models import (
     FilterType,
     Snapshot,
     _ensure_date,
+    new_campaign,
     new_snapshot,
 )
 
@@ -190,3 +191,70 @@ def import_image_into_campaign(
     save_campaign_to_disk(campaign)
 
     return snap
+
+
+# Append this to chroniclemap/storage/manager.py
+
+
+class StorageManager:
+    """
+    Object-oriented wrapper around the storage helper functions.
+    Provides higher-level methods and keeps a reference to a base directory.
+    """
+
+    def __init__(self, base_dir: Path):
+        """
+        base_dir: Path where campaign folders will be created (ChronicleMap_Data/Campaigns or user-specified).
+        """
+        self.base_dir = Path(base_dir)
+        _ensure_dir(self.base_dir)
+
+    def create_campaign(self, name: str) -> Campaign:
+        camp = new_campaign(name=name, path=None)
+        root = create_campaign_on_disk(self.base_dir, camp)
+        # create_campaign_on_disk sets campaign.path
+        return load_campaign_from_disk(root)
+
+    def load_campaign(self, name_or_path: str | Path) -> Campaign:
+        p = Path(name_or_path)
+        if p.exists():
+            return load_campaign_from_disk(p)
+        else:
+            # assume a campaign under base_dir
+            candidate = self.base_dir / str(name_or_path)
+            if candidate.exists():
+                return load_campaign_from_disk(candidate)
+            raise FileNotFoundError(
+                f"Campaign {name_or_path} not found under base dir {self.base_dir}"
+            )
+
+    def save_campaign(self, campaign: Campaign) -> None:
+        save_campaign_to_disk(campaign)
+
+    def import_image(
+        self,
+        campaign: Campaign,
+        src_path: Path,
+        filter_type: FilterType | str,
+        date_str: Optional[str] = None,
+    ) -> Snapshot:
+        return import_image_into_campaign(
+            campaign=campaign,
+            src_path=src_path,
+            filter_type=filter_type,
+            date_str=date_str,
+        )
+
+    def list_campaigns(self) -> Iterable[str]:
+        """List campaign directories under base_dir."""
+        for p in sorted(self.base_dir.iterdir()):
+            if p.is_dir():
+                yield p.name
+
+    def find_snapshot_by_id(
+        self, campaign: Campaign, snapshot_id: str
+    ) -> Optional[Snapshot]:
+        for s in campaign.snapshots:
+            if s.id == snapshot_id:
+                return s
+        return None
