@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Iterable, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Tuple
 
 from PIL import Image
 
@@ -15,6 +15,10 @@ from chroniclemap.core.models import (
     new_campaign,
     new_snapshot,
 )
+
+if TYPE_CHECKING:
+    from chroniclemap.vision.ocr import OCRProvider
+
 
 # constants
 META_FILENAME = "metadata.json"
@@ -134,37 +138,50 @@ def import_image_into_campaign(
     date_str: Optional[str] = None,
     *,
     create_dirs_if_missing: bool = True,
+    ocr_provider: Optional["OCRProvider"] = None,
+    ocr_roi_spec: Optional[Any] = None,
+    ocr_template_key: Optional[str] = None,
 ) -> Snapshot:
     """
-    Import an image file into campaign:
-      - copy image into campaign/maps/<filter>/<YYYY-MM-DD>.ext (avoid overwrite)
-      - generate thumbnail into campaign/thumbnails/
-      - create Snapshot object and append to campaign.snapshots, then save metadata to disk
-    Returns the Snapshot instance.
+    Import an image file into campaign, with optional OCR step to auto-detect date.
+    If date_str is None and ocr_provider provided, try OCR first.
     """
+    # if no campaign.path set error
     if not campaign.path:
         raise ValueError("campaign.path must be set before importing images")
-    campaign_root = Path(campaign.path)
-    maps_root = campaign_root / MAPS_DIRNAME
-    thumbs_root = campaign_root / THUMBS_DIRNAME
-    # normalize filter_type
-    if isinstance(filter_type, str):
+    # try OCR if requested and date not provided
+    if date_str is None and ocr_provider is not None:
         try:
-            filter_type = FilterType(filter_type)
+            maybe = ocr_provider.extract_date(
+                src_path, roi_spec=ocr_roi_spec, template_key=ocr_template_key
+            )
+            if maybe:
+                date_str = maybe
         except Exception:
-            filter_type = FilterType.CUSTOM
-    # parse date
+            # OCR failure should not crash import; fallback to mtime
+            date_str = None
+
+    # fallback to file mtime when no date provided
     if date_str is None:
-        # attempt to use src file's last modified time as fallback
         stat = src_path.stat()
         dt = stat.st_mtime
-        # convert to ISO date
         from datetime import datetime
 
         date_obj = datetime.utcfromtimestamp(dt).date()
     else:
         date_obj = _ensure_date(date_str)
+
+    # rest same as before: copy file into campaign maps, make thumbnail, create Snapshot, save metadata
     date_iso = date_obj.isoformat()
+    campaign_root = Path(campaign.path)
+    maps_root = campaign_root / MAPS_DIRNAME
+    thumbs_root = campaign_root / THUMBS_DIRNAME
+
+    if isinstance(filter_type, str):
+        try:
+            filter_type = FilterType(filter_type)
+        except Exception:
+            filter_type = FilterType.CUSTOM
 
     target_filter_dir = maps_root / (
         filter_type.value if isinstance(filter_type, FilterType) else str(filter_type)
@@ -172,13 +189,8 @@ def import_image_into_campaign(
     if create_dirs_if_missing:
         _ensure_dir(target_filter_dir)
 
-    # copy file safely
     dest_path = _safe_copy_image_to_target(src_path, target_filter_dir, date_iso)
-
-    # thumbnail
     thumb_path = _make_thumbnail(dest_path, thumbs_root)
-
-    # create Snapshot
     snap = new_snapshot(
         date_str=date_obj,
         filter_type=filter_type,
@@ -186,10 +198,7 @@ def import_image_into_campaign(
         thumbnail=str(thumb_path),
     )
     campaign.add_snapshot(snap)
-
-    # update metadata on disk
     save_campaign_to_disk(campaign)
-
     return snap
 
 
