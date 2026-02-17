@@ -25,7 +25,7 @@ def test_tesseract_extracts_date_from_synthetic(tmp_path):
     p = tmp_path / "ck3_test.png"
     img.save(p)
     # run tesseract provider
-    prov = TesseractOCRProvider(lang="eng")
+    prov = TesseractOCRProvider(lang="chi_sim+eng")
     out = prov.extract_date(p, roi_spec=None, template_key="ck3")
     assert out is not None
     assert out.startswith("1066")

@@ -246,12 +246,20 @@ class StorageManager:
         src_path: Path,
         filter_type: FilterType | str,
         date_str: Optional[str] = None,
+        create_dirs_if_missing: bool = True,
+        ocr_provider: Optional["OCRProvider"] = None,
+        ocr_roi_spec: Optional[Any] = None,
+        ocr_template_key: Optional[str] = None,
     ) -> Snapshot:
         return import_image_into_campaign(
             campaign=campaign,
             src_path=src_path,
             filter_type=filter_type,
             date_str=date_str,
+            create_dirs_if_missing=create_dirs_if_missing,
+            ocr_provider=ocr_provider,
+            ocr_roi_spec=ocr_roi_spec,
+            ocr_template_key=ocr_template_key,
         )
 
     def list_campaigns(self) -> Iterable[str]:
