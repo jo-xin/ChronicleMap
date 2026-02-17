@@ -1,11 +1,12 @@
 # tests/test_storage.py
-from datetime import date
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
-from chroniclemap.core.models import FilterType, new_campaign
+from chroniclemap.core.models import FilterType
+from chroniclemap.core.models import GameDate as date
+from chroniclemap.core.models import new_campaign
 from chroniclemap.storage.manager import (
     StorageManager,
     create_campaign_on_disk,
@@ -262,7 +263,7 @@ def test_storage_manager_full_workflow(tmp_path):
         img_path = tmp_path / f"map_{i}.png"
         Image.new("RGB", (200, 200), color=color).save(img_path)
         manager.import_image(
-            camp, img_path, FilterType.REALMS, dt.isoformat()  # 使用 ISO 格式字符串
+            camp, img_path, FilterType.REALMS, dt.to_iso()  # 使用 ISO 格式字符串
         )
 
     # 3. 重新加载活动（验证持久化）

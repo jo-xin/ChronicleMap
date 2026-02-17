@@ -20,3 +20,5 @@ Thumbs.db
 
 # Data (不要把大量图片推到 git 仓库，使用外部目录或 Git LFS)
 ChronicleMap_Data/
+
+badappletest/

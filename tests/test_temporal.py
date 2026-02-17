@@ -1,7 +1,7 @@
 # tests/test_temporal.py
-from datetime import date
-
-from chroniclemap.core.models import FilterType, new_campaign, new_snapshot
+from chroniclemap.core.models import FilterType
+from chroniclemap.core.models import GameDate as date
+from chroniclemap.core.models import new_campaign, new_snapshot
 from chroniclemap.temporal.engine import TemporalEngine
 
 

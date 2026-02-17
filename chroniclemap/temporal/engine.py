@@ -2,66 +2,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from typing import Callable, List, Optional
+from datetime import datetime
+from typing import Callable, Optional, Union
 
-from chroniclemap.core.models import Campaign, FilterType, Snapshot
-
-# month lengths for "no-leap" calendar
-_NO_LEAP_MONTH_LENGTHS: List[int] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-_NO_LEAP_CUMULATIVE = [0]
-_acc = 0
-for m in _NO_LEAP_MONTH_LENGTHS:
-    _acc += m
-    _NO_LEAP_CUMULATIVE.append(_acc)
-
-
-def date_to_no_leap_ordinal(d: date) -> int:
-    """
-    Map a date to an ordinal (0-based) in a calendar where each year = 365 days,
-    and February always has 28 days.
-    ordinal = (year-1) * 365 + (day_of_year_no_leap - 1)
-    """
-    y = d.year
-    # compute day_of_year ignoring leap year
-    day_of_year = _NO_LEAP_CUMULATIVE[d.month - 1] + d.day
-    return (y - 1) * 365 + (day_of_year - 1)
-
-
-def ordinal_to_date_no_leap(ordinal: int) -> date:
-    """
-    Convert an ordinal (0-based) in no-leap calendar back to date.
-    """
-    year = ordinal // 365 + 1
-    day_of_year = (ordinal % 365) + 1
-    # find month via cumulative
-    month = 1
-    for i in range(1, 13):
-        if day_of_year <= _NO_LEAP_CUMULATIVE[i]:
-            month = i
-            break
-    # day is day_of_year - cumulative[month-1]
-    day = day_of_year - _NO_LEAP_CUMULATIVE[month - 1]
-    return date(year, month, day)
+from chroniclemap.core.models import Campaign, FilterType, GameDate, Snapshot
 
 
 @dataclass
 class TemporalEngine:
     campaign: Campaign
-    current_datetime: datetime | None = None
+    current_date: GameDate | None = None
     playing: bool = False
-    on_time_update: Optional[Callable[[date], None]] = None
+    on_time_update: Optional[Callable[[GameDate], None]] = None
     # new flag: if True, ignore real-world leap years and treat each year as 365 days
     ignore_leap_years: bool = True
 
     def __post_init__(self):
-        if self.current_datetime is None:
+        if self.current_date is None:
             if self.campaign.snapshots:
-                d0 = self.campaign.snapshots[0].date
-                self.current_datetime = datetime(d0.year, d0.month, d0.day)
+                self.current_date = self.campaign.snapshots[0].date
             else:
                 now = datetime.utcnow()
-                self.current_datetime = datetime(now.year, now.month, now.day)
+                self.current_date = GameDate(now.year, now.month, now.day)
 
     # playback controls
     def set_playback_speed(self, units: str, value: float):
@@ -76,17 +38,13 @@ class TemporalEngine:
     def pause(self):
         self.playing = False
 
-    def seek(self, to_date: date):
-        if self.ignore_leap_years:
-            # convert via no-leap calendar but store as datetime at midnight
-            self.current_datetime = datetime(to_date.year, to_date.month, to_date.day)
-        else:
-            self.current_datetime = datetime(to_date.year, to_date.month, to_date.day)
+    def seek(self, to_date: Union[str, GameDate]):
+        self.current_date = GameDate.fromiso(to_date)
         if self.on_time_update:
-            self.on_time_update(self.current_datetime.date())
+            self.on_time_update(self.current_date)
 
-    def get_current_date(self) -> date:
-        return self.current_datetime.date()
+    def get_current_date(self) -> GameDate:
+        return self.current_date
 
     def tick(self, dt_seconds: float):
         """
@@ -103,27 +61,20 @@ class TemporalEngine:
 
         days_advance = value * float(dt_seconds)
 
-        if self.ignore_leap_years:
-            # convert current date to no-leap ordinal (0-based)
-            cur_date = self.get_current_date()
-            cur_ord = date_to_no_leap_ordinal(cur_date)
-            new_ord = int(round(cur_ord + days_advance))
-            new_date = ordinal_to_date_no_leap(new_ord)
-            self.current_datetime = datetime(
-                new_date.year, new_date.month, new_date.day
-            )
-        else:
-            # standard python datetime arithmetic
-            delta = timedelta(days=days_advance)
-            self.current_datetime = self.current_datetime + delta
+        # convert current date to ordinal (0-based)
+        cur_ord = self.current_date.to_ordinal(ignore_leap=self.ignore_leap_years)
+        new_ord = int(round(cur_ord + days_advance))
+        self.current_date = GameDate.from_ordinal(
+            new_ord, ignore_leap=self.ignore_leap_years
+        )
 
         if self.on_time_update:
-            self.on_time_update(self.current_datetime.date())
+            self.on_time_update(self.current_date)
 
     # snapshot selection helpers (unchanged)
     def get_snapshot_for(
         self,
-        d: date,
+        d: GameDate,
         filter_type: Optional[FilterType] = None,
         prefer_latest_before: bool = True,
     ) -> Optional[Snapshot]:
@@ -142,7 +93,7 @@ class TemporalEngine:
         return max(candidates, key=lambda s: s.date)
 
     def next_snapshot_after(
-        self, d: date, filter_type: Optional[FilterType] = None
+        self, d: GameDate, filter_type: Optional[FilterType] = None
     ) -> Optional[Snapshot]:
         candidates = [
             s
@@ -155,7 +106,7 @@ class TemporalEngine:
 
     def step_to_next_snapshot(
         self, filter_type: Optional[FilterType] = None
-    ) -> Optional[date]:
+    ) -> Optional[GameDate]:
         cur = self.get_current_date()
         nxt = self.next_snapshot_after(cur, filter_type=filter_type)
         if nxt is None:

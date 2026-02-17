@@ -10,8 +10,8 @@ from PIL import Image
 from chroniclemap.core.models import (
     Campaign,
     FilterType,
+    GameDate,
     Snapshot,
-    _ensure_date,
     new_campaign,
     new_snapshot,
 )
@@ -165,14 +165,15 @@ def import_image_into_campaign(
     if date_str is None:
         stat = src_path.stat()
         dt = stat.st_mtime
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        date_obj = datetime.utcfromtimestamp(dt).date()
+        py_date = datetime.fromtimestamp(dt, tz=timezone.utc).date()
+        date_obj = GameDate(py_date.year, py_date.month, py_date.day)
     else:
-        date_obj = _ensure_date(date_str)
+        date_obj = GameDate.fromiso(date_str)
 
     # rest same as before: copy file into campaign maps, make thumbnail, create Snapshot, save metadata
-    date_iso = date_obj.isoformat()
+    date_iso = date_obj.to_iso()
     campaign_root = Path(campaign.path)
     maps_root = campaign_root / MAPS_DIRNAME
     thumbs_root = campaign_root / THUMBS_DIRNAME

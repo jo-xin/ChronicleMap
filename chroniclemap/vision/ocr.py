@@ -16,7 +16,9 @@ except Exception:
     pytesseract = None
 
 # regex to find date-like patterns in OCR output
-DATE_REGEX = re.compile(r"(?P<y>\d{3,4})[.\-/年](?P<m>\d{1,2})[.\-/月](?P<d>\d{1,2})")
+DATE_REGEX = re.compile(
+    r"(?P<y>\d{3,4})[.\-/年](?P<m>\d{1,2})[.\-/月](?P<d>\d{1,2})"
+)  # FIXME: support more date formats, and BCE
 
 # default ROI templates keyed by game id; values map "WIDTHxHEIGHT" -> (left, top, right, bottom)
 # and may also include a 'relative' fallback (fractions)
