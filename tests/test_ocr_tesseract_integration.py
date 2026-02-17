@@ -1,14 +1,22 @@
 # tests/test_ocr_tesseract_integration.py
+import shutil
 
-import pytesseract  # noqa: F401
 import pytest
 from PIL import Image, ImageDraw
 
+# safe import
+try:
+    import pytesseract  # noqa: F401
+except Exception:
+    pytesseract = None
+
 from chroniclemap.vision.ocr import TesseractOCRProvider, compute_roi
+
+skip_condition = (pytesseract is None) or (shutil.which("tesseract") is None)
 
 
 @pytest.mark.skipif(
-    "pytesseract" not in globals(), reason="pytesseract not installed in env"
+    skip_condition, reason="pytesseract or tesseract binary not available"
 )
 def test_tesseract_extracts_date_from_synthetic(tmp_path):
     # create synthetic image 1920x1080 with "1066-09-15" at ck3 ROI
