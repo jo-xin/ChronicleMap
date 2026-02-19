@@ -216,7 +216,7 @@ class StorageManager:
         """
         base_dir: Path where campaign folders will be created (ChronicleMap_Data/Campaigns or user-specified).
         """
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir / "Campaigns")
         _ensure_dir(self.base_dir)
 
     def create_campaign(self, name: str) -> Campaign:
@@ -227,16 +227,25 @@ class StorageManager:
 
     def load_campaign(self, name_or_path: str | Path) -> Campaign:
         p = Path(name_or_path)
+
+        # 情况1：如果是绝对路径，直接加载
+        if p.is_absolute():
+            if p.exists():
+                return load_campaign_from_disk(p)
+            raise FileNotFoundError(f"Campaign not found at {p}")
+
+        # 情况2：如果是相对路径且当前目录存在（向后兼容/显式路径）
         if p.exists():
             return load_campaign_from_disk(p)
-        else:
-            # assume a campaign under base_dir
-            candidate = self.base_dir / str(name_or_path)
-            if candidate.exists():
-                return load_campaign_from_disk(candidate)
-            raise FileNotFoundError(
-                f"Campaign {name_or_path} not found under base dir {self.base_dir}"
-            )
+
+        # 情况3：在 base_dir/Campaigns 下查找（新标准位置）
+        candidate = self.base_dir / "Campaigns" / p
+        if candidate.exists():
+            return load_campaign_from_disk(candidate)
+
+        raise FileNotFoundError(
+            f"Campaign '{name_or_path}' not found under {self.base_dir}/Campaigns"
+        )
 
     def save_campaign(self, campaign: Campaign) -> None:
         save_campaign_to_disk(campaign)

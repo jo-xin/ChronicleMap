@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .campaign_store import CampaignStore
+from chroniclemap.gui.campaign_store import CampaignStore  # use the adapter above
 
 
 class NoteEditorDialog(QDialog):
@@ -91,7 +91,7 @@ class CampaignManagerView(QWidget):
         for entry in self.store.list_campaigns():
             name = entry["name"]
             meta = entry.get("metadata") or {}
-            created = meta.get("created", "")
+            created = meta.get("created_at") or meta.get("created") or ""
             item = QtWidgets.QListWidgetItem(
                 f"{name}    ({created[:10] if created else ''})"
             )
@@ -118,7 +118,7 @@ class CampaignManagerView(QWidget):
         if not ok or not name.strip():
             return
         try:
-            self.store.create_campaign(name.strip())
+            _camp = self.store.create_campaign(name.strip())
             self.status.setText(f"Created campaign '{name.strip()}'")
             self.refresh_list()
         except Exception as e:
@@ -161,11 +161,12 @@ class CampaignManagerView(QWidget):
         if not nm:
             return
         meta = self.store.load_metadata(nm) or {}
-        initial = meta.get("note", "")
+        initial = meta.get("notes") or meta.get("note") or ""
         dlg = NoteEditorDialog(self, initial_text=initial)
         if dlg.exec() == QDialog.Accepted:
             txt = dlg.get_text()
-            meta["note"] = txt
+            # save under 'notes' key to be compatible with Campaign.to_dict
+            meta["notes"] = txt
             self.store.save_metadata(nm, meta)
             self.status.setText(f"Saved note for '{nm}'")
 
@@ -173,5 +174,4 @@ class CampaignManagerView(QWidget):
         nm = self.ensure_selection()
         if not nm:
             return
-        # For now just show a simple message; in full app this would open main UI
         QMessageBox.information(self, "Open", f"Would open campaign: {nm}")

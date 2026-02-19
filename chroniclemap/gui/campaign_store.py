@@ -1,126 +1,201 @@
-# chroniclemap/gui/campaign_store.py
+# chroniclemap/storage/campaign_store.py
 from __future__ import annotations
 
-import json
-import os
 import shutil
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
-DEFAULT_METADATA = {
-    "name": None,
-    "created": None,
-    "modified": None,
-    "note": "",
-    "filters": ["Political", "Religious", "Culture"],
-    "snapshots": [],  # list of snapshot entries
-}
+# import your project's core models and storage helpers
+try:
+    from chroniclemap.core.models import Campaign, CampaignConfig, new_campaign
+except Exception as e:
+    raise ImportError(
+        "Failed to import chroniclemap.core.models — ensure core/models.py is available and importable."
+    ) from e
+
+try:
+    from chroniclemap.storage.manager import (
+        create_campaign_on_disk,
+        import_image_into_campaign,
+        load_campaign_from_disk,
+        save_campaign_to_disk,
+    )
+except Exception:
+    # fallback: try import the module as storage.manager
+    try:
+        from chroniclemap.storage import manager as _manager
+
+        create_campaign_on_disk = _manager.create_campaign_on_disk
+        load_campaign_from_disk = _manager.load_campaign_from_disk
+        save_campaign_to_disk = _manager.save_campaign_to_disk
+        import_image_into_campaign = _manager.import_image_into_campaign
+    except Exception as e:
+        raise ImportError(
+            "Failed to import chroniclemap.storage.manager helpers (create/load/save/import)."
+        ) from e
 
 
 class CampaignStore:
-    """
-    Simple filesystem-backed Campaign store.
-
-    Root layout:
-      /root/
-        /Campaigns/
-          /<campaign_name>/
-            metadata.json
-            maps/...
-            thumbnails/...
-    """
-
     def __init__(self, root: Path):
         self.root = Path(root)
-        self.campaigns_dir = self.root / "Campaigns"
-        self.campaigns_dir.mkdir(parents=True, exist_ok=True)
+        # ensure both root and root/Campaigns exist for compatibility
+        (self.root).mkdir(parents=True, exist_ok=True)
+        (self.root / "Campaigns").mkdir(parents=True, exist_ok=True)
 
-    def list_campaigns(self) -> List[Dict]:
-        result = []
-        for p in sorted(self.campaigns_dir.iterdir()):
-            if p.is_dir():
-                meta = self._read_metadata(p)
-                result.append({"name": p.name, "path": str(p), "metadata": meta})
-        return result
+    def list_campaigns(self) -> List[Dict[str, Any]]:
+        found = []
+        candidates = []
+        # prefer root/Campaigns/* but also include root/* that look like campaigns
+        c1 = self.root / "Campaigns"
+        if c1.exists() and c1.is_dir():
+            candidates.extend([p for p in c1.iterdir() if p.is_dir()])
+        # include legacy layout: root/<campaign> (if it has metadata.json)
+        candidates.extend(
+            [
+                p
+                for p in self.root.iterdir()
+                if p.is_dir() and (p / "metadata.json").exists()
+            ]
+        )
 
-    def create_campaign(self, name: str) -> Path:
-        safe_name = self._sanitize_name(name)
-        path = self.campaigns_dir / safe_name
-        if path.exists():
-            raise FileExistsError(f"Campaign '{safe_name}' already exists")
-        path.mkdir(parents=True)
-        (path / "maps").mkdir(exist_ok=True)
-        (path / "thumbnails").mkdir(exist_ok=True)
-        metadata = DEFAULT_METADATA.copy()
-        metadata["name"] = safe_name
-        now = datetime.now(timezone.utc).isoformat()
-        metadata["created"] = now
-        metadata["modified"] = now
-        self._atomic_write_json(path / "metadata.json", metadata)
-        return path
+        seen = set()
+        for p in sorted(candidates):
+            if str(p) in seen:
+                continue
+            seen.add(str(p))
+            try:
+                camp = load_campaign_from_disk(p)
+                found.append(
+                    {"name": camp.name, "path": str(p), "metadata": camp.to_dict()}
+                )
+            except Exception:
+                # skip invalid entries silently
+                continue
+        return found
+
+    def create_campaign(self, name: str) -> Campaign:
+        # create under root/Campaigns for consistency with load_campaign
+        target_root = self.root / "Campaigns"
+        target_root.mkdir(parents=True, exist_ok=True)
+        camp = new_campaign(name=name, path=None)
+        campaign_root = create_campaign_on_disk(target_root, camp)
+        return load_campaign_from_disk(campaign_root)
 
     def delete_campaign(self, name: str) -> None:
-        path = self.campaigns_dir / name
-        if not path.exists():
+        p1 = self.root / "Campaigns" / name
+        p2 = self.root / name
+        target = None
+        if p1.exists() and p1.is_dir():
+            target = p1
+        elif p2.exists() and p2.is_dir():
+            target = p2
+        else:
             raise FileNotFoundError(f"Campaign '{name}' not found")
-        # remove directory tree
-        shutil.rmtree(path)
+        shutil.rmtree(target)
 
     def rename_campaign(self, old: str, new: str) -> Path:
-        old_path = self.campaigns_dir / old
-        if not old_path.exists():
+        p_old = self._resolve_campaign_dir(old)
+        if not p_old:
             raise FileNotFoundError(old)
-        new_safe = self._sanitize_name(new)
-        new_path = self.campaigns_dir / new_safe
-        if new_path.exists():
-            raise FileExistsError(new_safe)
-        old_path.rename(new_path)
-        # update metadata.name
-        meta = self._read_metadata(new_path)
-        meta["name"] = new_safe
-        meta["modified"] = datetime.now(timezone.utc).isoformat()
-        self._atomic_write_json(new_path / "metadata.json", meta)
-        return new_path
+        p_new = p_old.parent / new
+        if p_new.exists():
+            raise FileExistsError(new)
+        p_old.rename(p_new)
+        camp = load_campaign_from_disk(p_new)
+        camp.name = new
+        save_campaign_to_disk(camp)
+        return p_new
 
     def load_metadata(self, name: str) -> Dict:
-        path = self.campaigns_dir / name
-        return self._read_metadata(path)
+        p = self._resolve_campaign_dir(name)
+        if not p:
+            raise FileNotFoundError(name)
+        camp = load_campaign_from_disk(p)
+        d = camp.to_dict()
+        # provide backwards-compatible alias: ensure 'note' exists if older code expects it
+        if "notes" in d and "note" not in d:
+            d["note"] = d["notes"]
+        return d
 
     def save_metadata(self, name: str, metadata: Dict) -> None:
-        path = self.campaigns_dir / name
-        if not path.exists():
+        p = self._resolve_campaign_dir(name)
+        if not p:
             raise FileNotFoundError(name)
-        metadata["modified"] = datetime.now(timezone.utc).isoformat()
-        self._atomic_write_json(path / "metadata.json", metadata)
+        camp = load_campaign_from_disk(p)
 
-    # ---- internal helpers ----
-    def _read_metadata(self, path: Path) -> Dict:
-        meta_file = path / "metadata.json"
-        if not meta_file.exists():
-            return {}
-        try:
-            with meta_file.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
+        # update fields safely; do type conversions when needed
+        # name
+        if "name" in metadata:
+            camp.name = metadata["name"]
 
-    def _atomic_write_json(self, path: Path, data: Dict) -> None:
-        # write to temp and replace
-        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent))
-        try:
-            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            os.replace(tmp_path, str(path))
-        finally:
-            # ensure no leftover
-            if os.path.exists(tmp_path):
+        # notes / note compatibility
+        if "notes" in metadata:
+            camp.notes = metadata["notes"]
+        elif "note" in metadata:
+            camp.notes = metadata["note"]
+
+        # config: if given as dict, convert back to CampaignConfig
+        if "config" in metadata:
+            cfg = metadata["config"]
+            if isinstance(cfg, dict):
                 try:
-                    os.remove(tmp_path)
+                    camp.config = CampaignConfig.from_dict(cfg)
                 except Exception:
+                    # fall back: keep existing config if conversion fails
                     pass
+            else:
+                # if it's already a CampaignConfig instance, accept it
+                camp.config = cfg
 
-    def _sanitize_name(self, name: str) -> str:
-        # basic sanitizer
-        return "".join(c for c in name if c.isalnum() or c in " _-").strip()
+        # meta: only shallow replace
+        if "meta" in metadata and isinstance(metadata["meta"], dict):
+            camp.meta = metadata["meta"]
+
+        # preserve created_at if present
+        if "created_at" in metadata:
+            camp.created_at = metadata["created_at"]
+        if "modified_at" in metadata:
+            camp.modified_at = metadata["modified_at"]
+
+        # Note: snapshots & rulers are expected to be manipulated via domain APIs (import_image, add_ruler, etc.)
+        save_campaign_to_disk(camp)
+
+    def import_image(
+        self,
+        name: str,
+        src_path: Path,
+        filter_type,
+        date_str: Optional[str] = None,
+        **kwargs,
+    ):
+        p = self._resolve_campaign_dir(name)
+        if not p:
+            raise FileNotFoundError(name)
+        camp = load_campaign_from_disk(p)
+        snap = import_image_into_campaign(
+            campaign=camp,
+            src_path=Path(src_path),
+            filter_type=filter_type,
+            date_str=date_str,
+            **kwargs,
+        )
+        return snap
+
+    def find_snapshot_by_id(self, name: str, snapshot_id: str):
+        p = self._resolve_campaign_dir(name)
+        if not p:
+            return None
+        camp = load_campaign_from_disk(p)
+        for s in camp.snapshots:
+            if s.id == snapshot_id:
+                return s
+        return None
+
+    def _resolve_campaign_dir(self, name: str) -> Optional[Path]:
+        p1 = self.root / "Campaigns" / name
+        p2 = self.root / name
+        if p1.exists() and p1.is_dir():
+            return p1
+        if p2.exists() and p2.is_dir():
+            return p2
+        return None
