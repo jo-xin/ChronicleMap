@@ -94,8 +94,10 @@ class ImportWidget(QWidget):
         # import buttons
         btn_layout = QHBoxLayout()
         self.file_btn = QPushButton("Choose File...")
+        self.batch_btn = QPushButton("Batch Import...")
         self.paste_btn = QPushButton("Paste (Ctrl+V)")
         btn_layout.addWidget(self.file_btn)
+        btn_layout.addWidget(self.batch_btn)
         btn_layout.addWidget(self.paste_btn)
         layout.addLayout(btn_layout)
 
@@ -104,6 +106,7 @@ class ImportWidget(QWidget):
 
         # wire
         self.file_btn.clicked.connect(self.on_choose_file)
+        self.batch_btn.clicked.connect(self.on_batch_import)
         self.paste_btn.clicked.connect(self.on_paste)
 
         # store filters locally
@@ -121,6 +124,21 @@ class ImportWidget(QWidget):
         )
         if path:
             self._handle_input_path(Path(path))
+
+    def on_batch_import(self):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select images",
+            str(Path.home()),
+            "Images (*.png *.jpg *.jpeg *.bmp)",
+        )
+        if not paths:
+            return
+        imported = 0
+        for p in paths:
+            if self._handle_input_path(Path(p), confirm=False):
+                imported += 1
+        self.status_label.setText(f"Imported {imported} snapshots (batch)")
 
     def on_paste(self):
         clipboard = QGuiApplication.clipboard()
@@ -150,7 +168,7 @@ class ImportWidget(QWidget):
         if path:
             self._handle_input_path(Path(path))
 
-    def _handle_input_path(self, path: Path):
+    def _handle_input_path(self, path: Path, *, confirm: bool = True) -> bool:
         self.status_label.setText("Processing...")
         detected_date = None
         _detected_conf = None
@@ -188,50 +206,76 @@ class ImportWidget(QWidget):
             self.status_label.setText("Campaign not found")
             return
 
-        # 对话框配置
-        filters = [f.value for f in FilterType]  # 使用核心枚举类型
-        dlg = SnapshotConfirmDialog(
-            self.window(),
-            path,
-            self.campaign_name,
-            filters,
-            detected_date_iso=detected_date,
-        )
+        # 交互导入：弹出确认对话框
+        if confirm:
+            filters = [f.value for f in FilterType]  # 使用核心枚举类型
+            dlg = SnapshotConfirmDialog(
+                self.window(),
+                path,
+                self.campaign_name,
+                filters,
+                detected_date_iso=detected_date,
+                default_filter=self.current_filter(),
+            )
 
-        if dlg.exec() == QDialog.Accepted:
-            data = dlg.get_result() or {}
-            try:
-                # 兼容真实对话框与测试中的 Mock：字段名可能略有不同
-                filt_value = data.get("filter")
-                date_value = data.get("date") or data.get("date_iso")
-                if not filt_value or not date_value:
-                    raise ValueError("Missing filter or date from dialog result")
-
-                # 使用storage/manager.py的接口规范
-                snap = self.storage.import_image(
-                    campaign=campaign,
-                    src_path=path,
-                    filter_type=FilterType(filt_value),  # 转换为枚举类型
-                    date_str=date_value,
-                    ocr_provider=self.ocr,  # 传递OCR组件
-                    create_dirs_if_missing=True,  # 确保目录创建
-                )
-
-                # 更新UI状态
-                self.status_label.setText(f"Imported snapshot {snap.date.to_iso()}")
-                # 通知上层界面：有新快照导入
+            if dlg.exec() == QDialog.Accepted:
+                data = dlg.get_result() or {}
                 try:
-                    self.snapshot_added.emit(snap)
-                except Exception:
-                    # 信号失败不应影响核心导入逻辑
-                    pass
+                    # 兼容真实对话框与测试中的 Mock：字段名可能略有不同
+                    filt_value = data.get("filter")
+                    date_value = data.get("date") or data.get("date_iso")
+                    if not filt_value or not date_value:
+                        raise ValueError("Missing filter or date from dialog result")
 
-            except ValueError as ve:  # 处理枚举/缺字段错误
-                self.status_label.setText(f"Invalid data: {str(ve)}")
-            except Exception as e:
-                self.status_label.setText(f"Import failed: {e}")
-        else:
-            self.status_label.setText("Import cancelled")
+                    # 使用storage/manager.py的接口规范
+                    snap = self.storage.import_image(
+                        campaign=campaign,
+                        src_path=path,
+                        filter_type=FilterType(filt_value),  # 转换为枚举类型
+                        date_str=date_value,
+                        ocr_provider=self.ocr,  # 传递OCR组件
+                        create_dirs_if_missing=True,  # 确保目录创建
+                    )
+
+                    # 更新UI状态
+                    self.status_label.setText(f"Imported snapshot {snap.date.to_iso()}")
+                    # 通知上层界面：有新快照导入
+                    try:
+                        self.snapshot_added.emit(snap)
+                    except Exception:
+                        # 信号失败不应影响核心导入逻辑
+                        pass
+                    return True
+
+                except ValueError as ve:  # 处理枚举/缺字段错误
+                    self.status_label.setText(f"Invalid data: {str(ve)}")
+                except Exception as e:
+                    self.status_label.setText(f"Import failed: {e}")
+            else:
+                self.status_label.setText("Import cancelled")
+            return False
+
+        # 批量导入：不弹出对话框，直接使用当前单选框滤镜和自动/预测日期
+        try:
+            filt_value = self.current_filter()
+            # detected_date 可能为 None，此时 import_image 会再尝试 OCR / mtime
+            snap = self.storage.import_image(
+                campaign=campaign,
+                src_path=path,
+                filter_type=FilterType(filt_value),
+                date_str=detected_date,
+                ocr_provider=self.ocr,
+                create_dirs_if_missing=True,
+            )
+            self.status_label.setText(f"Imported snapshot {snap.date.to_iso()}")
+            try:
+                self.snapshot_added.emit(snap)
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            self.status_label.setText(f"Batch import failed: {e}")
+            return False
 
     def _get_last_snapshot_date(self, filter_name: str) -> Optional[str]:
         meta = self.store.load_metadata(self.campaign_name) or {}

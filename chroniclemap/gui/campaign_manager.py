@@ -179,7 +179,7 @@ class CampaignManagerView(QWidget):
         if not nm:
             return
         # 打开活动详情/导入窗口
-        detail = CampaignDetailWindow(nm, self.store, parent=self)
+        detail = CampaignDetailWindow(nm, self.store)
         detail.show()
         self._detail_windows.append(detail)
 

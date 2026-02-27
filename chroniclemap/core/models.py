@@ -19,6 +19,7 @@ import json
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -500,6 +501,17 @@ class Campaign:
     created_at: Optional[str] = None
     modified_at: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """对象初始化后自动设置时间戳"""
+        now = datetime.now().isoformat()
+
+        # 只在创建时设置 created_at（如果是从字典反序列化，会保留原值）
+        if self.created_at is None:
+            self.created_at = now
+
+        # modified_at 总是更新为当前时间
+        self.modified_at = now
 
     def add_snapshot(self, snapshot: Snapshot) -> None:
         if any(s.id == snapshot.id for s in self.snapshots):

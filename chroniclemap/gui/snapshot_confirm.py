@@ -36,6 +36,7 @@ class SnapshotConfirmDialog(QDialog):
         campaign_name: str,
         filters: List[str],
         detected_date_iso: Optional[str] = None,
+        default_filter: Optional[str] = None,
     ):
         super().__init__(parent)
         self.setWindowTitle("Confirm Snapshot")
@@ -72,6 +73,9 @@ class SnapshotConfirmDialog(QDialog):
         right.addWidget(QLabel("Filter:"))
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(self.filters)
+        # 如果提供了默认滤镜，则在下拉框中选中它
+        if default_filter and default_filter in self.filters:
+            self.filter_combo.setCurrentIndex(self.filters.index(default_filter))
         right.addWidget(self.filter_combo)
 
         right.addWidget(QLabel("Date (ISO, e.g. 1450-06-01):"))
