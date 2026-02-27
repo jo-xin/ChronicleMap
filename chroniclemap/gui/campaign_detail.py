@@ -109,6 +109,6 @@ class CampaignDetailWindow(QWidget):
             if current_filter and filter_type and filter_type != current_filter:
                 continue
             path = s.get("path") or ""
-            text = f"{date}    [{filter_type}]    {path}"
+            text = f"{date} | {path}"
             item = QListWidgetItem(text)
             self.snapshot_list.addItem(item)
