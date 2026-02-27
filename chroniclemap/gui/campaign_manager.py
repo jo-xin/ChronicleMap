@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from chroniclemap.gui.campaign_detail import CampaignDetailWindow
 from chroniclemap.gui.campaign_store import CampaignStore  # use the adapter above
 
 
@@ -52,6 +53,9 @@ class CampaignManagerView(QWidget):
         self.store = store
         self.setWindowTitle("ChronicleMap — Campaign Manager")
         self.resize(900, 600)
+
+        # 保持对已打开详情窗口的引用，避免被垃圾回收
+        self._detail_windows: list[CampaignDetailWindow] = []
 
         self.layout = QVBoxLayout(self)
 
@@ -174,4 +178,14 @@ class CampaignManagerView(QWidget):
         nm = self.ensure_selection()
         if not nm:
             return
-        QMessageBox.information(self, "Open", f"Would open campaign: {nm}")
+        # 打开活动详情/导入窗口
+        detail = CampaignDetailWindow(nm, self.store, parent=self)
+        detail.show()
+        self._detail_windows.append(detail)
+
+        # 当窗口销毁时，从列表中移除引用
+        def _on_destroyed(_obj=None, win=detail):
+            if win in self._detail_windows:
+                self._detail_windows.remove(win)
+
+        detail.destroyed.connect(_on_destroyed)

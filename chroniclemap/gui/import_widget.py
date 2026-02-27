@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QMimeData
+from PySide6.QtCore import QMimeData, Signal
 from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -30,6 +30,9 @@ from chroniclemap.storage.manager import StorageManager
 
 
 class ImportWidget(QWidget):
+    # 发出一个信号，通知外层“有新的 Snapshot 被导入”，载荷为 Snapshot 对象
+    snapshot_added = Signal(object)
+
     def __init__(
         self,
         campaign_name: str,
@@ -166,16 +169,14 @@ class ImportWidget(QWidget):
             # logger.warning(f"OCR failed: {e}")
             detected_date = None
 
-        # 后备逻辑：基于最后一个快照预测
+        # 后备逻辑：基于最后一个快照的日期预测
         if not detected_date:
-            last_snap = self._get_last_snapshot(self.current_filter())
-            if last_snap:
+            last_date_iso = self._get_last_snapshot_date(self.current_filter())
+            if last_date_iso:
                 try:
                     num = int(self.interval_spin.value())
                     unit = self.interval_unit.currentText()
-                    predicted = self._add_interval_iso(
-                        last_snap.date.to_iso(), num, unit
-                    )
+                    predicted = self._add_interval_iso(last_date_iso, num, unit)
                     detected_date = predicted
                 except Exception:
                     detected_date = None
@@ -198,24 +199,35 @@ class ImportWidget(QWidget):
         )
 
         if dlg.exec() == QDialog.Accepted:
-            data = dlg.get_result()
+            data = dlg.get_result() or {}
             try:
-                # 使用storage/manager.py的接口规范（关键修改）
+                # 兼容真实对话框与测试中的 Mock：字段名可能略有不同
+                filt_value = data.get("filter")
+                date_value = data.get("date") or data.get("date_iso")
+                if not filt_value or not date_value:
+                    raise ValueError("Missing filter or date from dialog result")
+
+                # 使用storage/manager.py的接口规范
                 snap = self.storage.import_image(
                     campaign=campaign,
                     src_path=path,
-                    filter_type=FilterType(data["filter"]),  # 转换为枚举类型
-                    date_str=data["date"],
+                    filter_type=FilterType(filt_value),  # 转换为枚举类型
+                    date_str=date_value,
                     ocr_provider=self.ocr,  # 传递OCR组件
                     create_dirs_if_missing=True,  # 确保目录创建
                 )
 
                 # 更新UI状态
-                self.status_label.setText(f"Imported snapshot {snap.date}")
-                self.snapshot_added.emit(snap)  # 如果需要触发信号
+                self.status_label.setText(f"Imported snapshot {snap.date.to_iso()}")
+                # 通知上层界面：有新快照导入
+                try:
+                    self.snapshot_added.emit(snap)
+                except Exception:
+                    # 信号失败不应影响核心导入逻辑
+                    pass
 
-            except ValueError as ve:  # 处理枚举转换错误
-                self.status_label.setText(f"Invalid filter: {str(ve)}")
+            except ValueError as ve:  # 处理枚举/缺字段错误
+                self.status_label.setText(f"Invalid data: {str(ve)}")
             except Exception as e:
                 self.status_label.setText(f"Import failed: {e}")
         else:
@@ -227,7 +239,8 @@ class ImportWidget(QWidget):
         dates = [
             s.get("date")
             for s in snaps
-            if s.get("filter") == filter_name and s.get("date")
+            if (s.get("filter_type") == filter_name or s.get("filter") == filter_name)
+            and s.get("date")
         ]
         if not dates:
             return None

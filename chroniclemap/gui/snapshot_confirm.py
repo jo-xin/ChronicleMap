@@ -168,6 +168,8 @@ class SnapshotConfirmDialog(QDialog):
         self.result_data = {
             "campaign": self.campaign_name,
             "filter": self.filter_combo.currentText(),
+            # 同时提供 date 与 date_iso，方便不同调用方/旧代码复用
+            "date": iso,
             "date_iso": iso,
             "note": self.note_edit.toPlainText(),
             "src_path": str(self.src_path),
