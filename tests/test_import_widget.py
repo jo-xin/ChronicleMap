@@ -20,7 +20,6 @@ skip_condition = (pytesseract is None) or (shutil.which("tesseract") is None)
 
 
 @pytest.mark.skipif(skip_condition, reason="tesseract not available")
-@pytest.mark.gui
 def test_import_widget_with_real_tesseract_ocr(qtbot, tmp_path, monkeypatch):
     """
     Integration test:

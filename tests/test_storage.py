@@ -79,10 +79,10 @@ def test_storage_manager_create_campaign(tmp_path):
 
     # 验证返回的对象
     assert camp.name == "test-campaign"
-    assert camp.path == str(tmp_path / "test-campaign")
+    assert camp.path == str(tmp_path / "Campaigns" / "test-campaign")
 
     # 验证磁盘结构
-    camp_dir = tmp_path / "test-campaign"
+    camp_dir = tmp_path / "Campaigns" / "test-campaign"
     assert (camp_dir / "metadata.json").exists()
     assert (camp_dir / "maps").is_dir()
     assert (camp_dir / "thumbnails").is_dir()
@@ -121,7 +121,7 @@ def test_storage_manager_load_campaign_by_name(tmp_path):
     loaded = manager.load_campaign("loadable")
     assert loaded.name == "loadable"
     assert loaded.notes == "Test notes"
-    assert loaded.path == str(tmp_path / "loadable")
+    assert loaded.path == str(tmp_path / "Campaigns" / "loadable")
 
 
 def test_storage_manager_load_campaign_by_path(tmp_path):
@@ -130,7 +130,7 @@ def test_storage_manager_load_campaign_by_path(tmp_path):
     manager.create_campaign("path-test")
 
     # 通过绝对路径加载
-    camp_path = tmp_path / "path-test"
+    camp_path = tmp_path / "Campaigns" / "path-test"
     loaded = manager.load_campaign(camp_path)
     assert loaded.name == "path-test"
 

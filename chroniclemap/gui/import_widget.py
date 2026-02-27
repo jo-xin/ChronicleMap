@@ -205,7 +205,7 @@ class ImportWidget(QWidget):
                     campaign=campaign,
                     src_path=path,
                     filter_type=FilterType(data["filter"]),  # 转换为枚举类型
-                    date_str=data["date_iso"],
+                    date_str=data["date"],
                     ocr_provider=self.ocr,  # 传递OCR组件
                     create_dirs_if_missing=True,  # 确保目录创建
                 )
