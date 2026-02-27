@@ -36,7 +36,6 @@ class SnapshotConfirmDialog(QDialog):
         campaign_name: str,
         filters: List[str],
         detected_date_iso: Optional[str] = None,
-        default_filter: Optional[str] = None,
     ):
         super().__init__(parent)
         self.setWindowTitle("Confirm Snapshot")
@@ -52,6 +51,9 @@ class SnapshotConfirmDialog(QDialog):
                 norm_filters.append(str(f))
         self.filters = norm_filters
         self.result_data = None  # will hold dict on accept
+        # 这两个字段会在 set_candidates 中被设置
+        self.ocr_candidate: Optional[str] = None
+        self.predicted_candidate: Optional[str] = None
 
         layout = QHBoxLayout()
         left = QVBoxLayout()
@@ -73,10 +75,22 @@ class SnapshotConfirmDialog(QDialog):
         right.addWidget(QLabel("Filter:"))
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(self.filters)
-        # 如果提供了默认滤镜，则在下拉框中选中它
-        if default_filter and default_filter in self.filters:
-            self.filter_combo.setCurrentIndex(self.filters.index(default_filter))
         right.addWidget(self.filter_combo)
+
+        # OCR / 预测结果展示区
+        right.addWidget(QLabel("Detected dates:"))
+        self.ocr_label = QLabel("OCR: (none)")
+        self.pred_label = QLabel("Predicted: (none)")
+        right.addWidget(self.ocr_label)
+        right.addWidget(self.pred_label)
+
+        # 快速应用按钮
+        self.use_ocr_btn = QPushButton("Use OCR result")
+        self.use_pred_btn = QPushButton("Use predicted result")
+        quick_layout = QHBoxLayout()
+        quick_layout.addWidget(self.use_ocr_btn)
+        quick_layout.addWidget(self.use_pred_btn)
+        right.addLayout(quick_layout)
 
         right.addWidget(QLabel("Date (ISO, e.g. 1450-06-01):"))
         # Use plain text input; validate with GameDate.fromiso
@@ -117,6 +131,8 @@ class SnapshotConfirmDialog(QDialog):
         self._on_date_changed()
         self.cancel_btn.clicked.connect(self.reject)
         self.save_btn.clicked.connect(self.on_save)
+        self.use_ocr_btn.clicked.connect(self._apply_ocr_candidate)
+        self.use_pred_btn.clicked.connect(self._apply_predicted_candidate)
 
     def _on_date_changed(self):
         txt = self.date_input.text().strip()
@@ -159,6 +175,44 @@ class SnapshotConfirmDialog(QDialog):
             self.filename_preview.setText(f"maps/{filt}/{iso}{ext}")
         else:
             self.filename_preview.setText(f"maps/{filt}/<invalid-date>{ext}")
+
+    # -------------------
+    # Candidate helpers
+    # -------------------
+
+    def set_candidates(
+        self, ocr_date: Optional[str], predicted_date: Optional[str]
+    ) -> None:
+        """由调用方设置 OCR / 预测得到的日期，并刷新 UI。"""
+        self.ocr_candidate = ocr_date
+        self.predicted_candidate = predicted_date
+
+        if ocr_date:
+            self.ocr_label.setText(f"OCR: {ocr_date}")
+        else:
+            self.ocr_label.setText("OCR: (none)")
+
+        if predicted_date:
+            self.pred_label.setText(f"Predicted: {predicted_date}")
+        else:
+            self.pred_label.setText("Predicted: (none)")
+
+        # 默认优先使用 OCR 结果填入输入框
+        if ocr_date:
+            self.date_input.setText(ocr_date)
+        elif predicted_date and not self.date_input.text().strip():
+            self.date_input.setText(predicted_date)
+
+        # 同步一次文件名预览
+        self._on_date_changed()
+
+    def _apply_ocr_candidate(self) -> None:
+        if self.ocr_candidate:
+            self.date_input.setText(self.ocr_candidate)
+
+    def _apply_predicted_candidate(self) -> None:
+        if self.predicted_candidate:
+            self.date_input.setText(self.predicted_candidate)
 
     def on_save(self):
         txt = self.date_input.text().strip()

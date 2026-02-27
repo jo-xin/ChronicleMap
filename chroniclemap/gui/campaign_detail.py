@@ -73,10 +73,14 @@ class CampaignDetailWindow(QWidget):
         self.refresh_btn.clicked.connect(self.refresh_snapshots)
         self.close_btn.clicked.connect(self.close)
 
-        # 当 ImportWidget 导入成功时自动刷新列表
+        # 当 ImportWidget 导入成功或滤镜变化时自动刷新列表
         if hasattr(self.import_widget, "snapshot_added"):
             self.import_widget.snapshot_added.connect(
                 lambda _snap: self.refresh_snapshots()
+            )
+        if hasattr(self.import_widget, "filter_changed"):
+            self.import_widget.filter_changed.connect(
+                lambda _name: self.refresh_snapshots()
             )
 
         self.refresh_snapshots()
@@ -90,9 +94,20 @@ class CampaignDetailWindow(QWidget):
             return
 
         snaps = meta.get("snapshots", [])
+        # 当前选中的滤镜（若 ImportWidget 可用）
+        current_filter: Optional[str] = None
+        try:
+            if hasattr(self.import_widget, "current_filter"):
+                current_filter = self.import_widget.current_filter()
+        except Exception:
+            current_filter = None
+
         for s in snaps:
             date = s.get("date") or ""
             filter_type = s.get("filter_type") or s.get("filter") or ""
+            # 根据当前滤镜筛选
+            if current_filter and filter_type and filter_type != current_filter:
+                continue
             path = s.get("path") or ""
             text = f"{date}    [{filter_type}]    {path}"
             item = QListWidgetItem(text)

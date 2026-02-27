@@ -6,9 +6,10 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QMimeData, Signal
+from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QDialog,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QProgressDialog,
     QPushButton,
     QRadioButton,
     QSpinBox,
@@ -32,6 +34,8 @@ from chroniclemap.storage.manager import StorageManager
 class ImportWidget(QWidget):
     # 发出一个信号，通知外层“有新的 Snapshot 被导入”，载荷为 Snapshot 对象
     snapshot_added = Signal(object)
+    # 当前选中的滤镜发生变化时发出（载荷为滤镜名字符串）
+    filter_changed = Signal(str)
 
     def __init__(
         self,
@@ -76,6 +80,10 @@ class ImportWidget(QWidget):
             self.filter_group.addButton(rb)
             self.filter_buttons.append(rb)
             rg_layout.addWidget(rb)
+            # 当某个按钮被勾选时发出 filter_changed 信号
+            rb.toggled.connect(
+                lambda checked, name=f: checked and self.filter_changed.emit(name)
+            )
         rg.setLayout(rg_layout)
         layout.addWidget(rg)
 
@@ -134,10 +142,22 @@ class ImportWidget(QWidget):
         )
         if not paths:
             return
+
+        total = len(paths)
+        progress = QProgressDialog("Importing snapshots...", "Cancel", 0, total, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setAutoClose(True)
+        progress.setValue(0)
+
         imported = 0
-        for p in paths:
+        for idx, p in enumerate(paths, start=1):
+            if progress.wasCanceled():
+                break
             if self._handle_input_path(Path(p), confirm=False):
                 imported += 1
+            progress.setValue(idx)
+            QApplication.processEvents()
+
         self.status_label.setText(f"Imported {imported} snapshots (batch)")
 
     def on_paste(self):
@@ -170,8 +190,9 @@ class ImportWidget(QWidget):
 
     def _handle_input_path(self, path: Path, *, confirm: bool = True) -> bool:
         self.status_label.setText("Processing...")
-        detected_date = None
-        _detected_conf = None
+        ocr_date: Optional[str] = None
+        predicted_date: Optional[str] = None
+        detected_date: Optional[str] = None
 
         # OCR处理
         try:
@@ -182,22 +203,22 @@ class ImportWidget(QWidget):
                     roi_spec=None,  # 根据实际需要传递ROI参数
                     template_key=None,  # 根据OCR模板选择
                 )
-                detected_date = raw_date if raw_date else None
+                ocr_date = raw_date or None
         except Exception:
-            # logger.warning(f"OCR failed: {e}")
-            detected_date = None
+            ocr_date = None
 
         # 后备逻辑：基于最后一个快照的日期预测
-        if not detected_date:
-            last_date_iso = self._get_last_snapshot_date(self.current_filter())
-            if last_date_iso:
-                try:
-                    num = int(self.interval_spin.value())
-                    unit = self.interval_unit.currentText()
-                    predicted = self._add_interval_iso(last_date_iso, num, unit)
-                    detected_date = predicted
-                except Exception:
-                    detected_date = None
+        last_date_iso = self._get_last_snapshot_date(self.current_filter())
+        if last_date_iso:
+            try:
+                num = int(self.interval_spin.value())
+                unit = self.interval_unit.currentText()
+                predicted_date = self._add_interval_iso(last_date_iso, num, unit)
+            except Exception:
+                predicted_date = None
+
+        # 默认优先 OCR，其次预测
+        detected_date = ocr_date or predicted_date
 
         # 获取当前Campaign对象（关键修改点）
         try:
@@ -215,8 +236,23 @@ class ImportWidget(QWidget):
                 self.campaign_name,
                 filters,
                 detected_date_iso=detected_date,
-                default_filter=self.current_filter(),
             )
+
+            # 将 OCR / 预测结果、当前滤镜传入对话框（若其支持）
+            if hasattr(dlg, "set_candidates"):
+                try:
+                    dlg.set_candidates(ocr_date, predicted_date)
+                except Exception:
+                    pass
+            # 尝试让对话框默认选中当前单选框滤镜
+            try:
+                current = self.current_filter()
+                if hasattr(dlg, "filters") and hasattr(dlg, "filter_combo"):
+                    if current in dlg.filters:
+                        idx = dlg.filters.index(current)
+                        dlg.filter_combo.setCurrentIndex(idx)
+            except Exception:
+                pass
 
             if dlg.exec() == QDialog.Accepted:
                 data = dlg.get_result() or {}
@@ -258,7 +294,7 @@ class ImportWidget(QWidget):
         # 批量导入：不弹出对话框，直接使用当前单选框滤镜和自动/预测日期
         try:
             filt_value = self.current_filter()
-            # detected_date 可能为 None，此时 import_image 会再尝试 OCR / mtime
+            # 批量导入：优先使用 OCR 结果，其次预测，否则留给存储层回退
             snap = self.storage.import_image(
                 campaign=campaign,
                 src_path=path,
