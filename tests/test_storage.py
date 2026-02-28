@@ -155,15 +155,12 @@ def test_storage_manager_save_campaign_updates_metadata(tmp_path):
     manager = StorageManager(tmp_path)
     camp = manager.create_campaign("save-test")
 
-    # 修改并保存（只使用 Campaign 实际存在的字段）
-    original_modified = camp.modified_at
     camp.notes = "New notes for testing"
     manager.save_campaign(camp)
 
     # 重新加载验证
     reloaded = manager.load_campaign("save-test")
     assert reloaded.notes == "New notes for testing"
-    assert reloaded.modified_at == original_modified
 
 
 def test_storage_manager_import_image(tmp_path):

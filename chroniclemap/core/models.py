@@ -418,6 +418,8 @@ class Ruler:
     epithet: Optional[str] = None
     start_date: Optional[GameDate] = None
     end_date: Optional[GameDate] = None
+    player_start_date: Optional[GameDate] = None
+    player_end_date: Optional[GameDate] = None
     rank_periods: List[RankPeriod] = field(default_factory=list)
     notes: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
@@ -430,6 +432,12 @@ class Ruler:
             "epithet": self.epithet,
             "start_date": self.start_date.to_iso() if self.start_date else None,
             "end_date": self.end_date.to_iso() if self.end_date else None,
+            "player_start_date": (
+                self.player_start_date.to_iso() if self.player_start_date else None
+            ),
+            "player_end_date": (
+                self.player_end_date.to_iso() if self.player_end_date else None
+            ),
             "rank_periods": [rp.to_dict() for rp in self.rank_periods],
             "notes": self.notes,
             "meta": self.meta,
@@ -449,6 +457,16 @@ class Ruler:
             ),
             end_date=(
                 GameDate.fromiso(data.get("end_date")) if data.get("end_date") else None
+            ),
+            player_start_date=(
+                GameDate.fromiso(data.get("player_start_date"))
+                if data.get("player_start_date")
+                else None
+            ),
+            player_end_date=(
+                GameDate.fromiso(data.get("player_end_date"))
+                if data.get("player_end_date")
+                else None
             ),
             rank_periods=[
                 RankPeriod.from_dict(x) for x in data.get("rank_periods", [])
@@ -621,10 +639,14 @@ def new_ruler(
     display_name: Optional[str] = None,
     start_date: Optional[Union[str, GameDate]] = None,
     end_date: Optional[Union[str, GameDate]] = None,
+    player_start_date: Optional[Union[str, GameDate]] = None,
+    player_end_date: Optional[Union[str, GameDate]] = None,
     epithet: Optional[str] = None,
 ) -> Ruler:
     sd = GameDate.fromiso(start_date) if start_date else None
     ed = GameDate.fromiso(end_date) if end_date else None
+    psd = GameDate.fromiso(player_start_date) if player_start_date else None
+    ped = GameDate.fromiso(player_end_date) if player_end_date else None
     return Ruler(
         id=str(uuid.uuid4()),
         full_name=full_name,
@@ -632,6 +654,8 @@ def new_ruler(
         epithet=epithet,
         start_date=sd,
         end_date=ed,
+        player_start_date=psd,
+        player_end_date=ped,
         rank_periods=[],
     )
 
