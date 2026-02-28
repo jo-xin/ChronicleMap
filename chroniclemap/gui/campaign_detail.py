@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from chroniclemap.core.models import FilterType, GameDate
 from chroniclemap.gui.campaign_store import CampaignStore
 from chroniclemap.gui.import_widget import ImportWidget
+from chroniclemap.gui.player_window import PlayerWindow
 from chroniclemap.storage.manager import StorageManager
 from chroniclemap.vision.ocr import TesseractOCRProvider
 
@@ -139,13 +140,16 @@ class CampaignDetailWindow(QWidget):
         # 底部按钮栏
         btn_layout = QHBoxLayout()
         self.refresh_btn = QPushButton("Refresh Snapshots")
+        self.open_player_btn = QPushButton("Open Player View")
         self.close_btn = QPushButton("Close")
         btn_layout.addWidget(self.refresh_btn)
+        btn_layout.addWidget(self.open_player_btn)
         btn_layout.addStretch()
         btn_layout.addWidget(self.close_btn)
         layout.addLayout(btn_layout)
 
         self.refresh_btn.clicked.connect(self.refresh_snapshots)
+        self.open_player_btn.clicked.connect(self._open_player)
         self.close_btn.clicked.connect(self.close)
 
         # 当 ImportWidget 导入成功或滤镜变化时自动刷新列表
@@ -297,6 +301,18 @@ class CampaignDetailWindow(QWidget):
         camp.snapshots.sort(key=lambda s: s.date.to_ordinal(False))
         self.storage.save_campaign(camp)
         self.refresh_snapshots()
+
+    def _open_player(self) -> None:
+        """打开当前存档的播放窗口。"""
+        # StorageManager 把 campaign 建在 base_dir/Campaigns 下，
+        # 而 PlayerWindow 期望传入的是根目录（即包含 Campaigns 的目录）
+        base_root = self.storage.base_dir.parent
+        player = PlayerWindow(
+            self.campaign_name,
+            storage_base_dir=base_root,
+            parent=None,
+        )
+        player.show()
 
     def _apply_bulk_filter(self) -> None:
         """将选中快照的滤镜统一设置为下拉框选择的值。"""
