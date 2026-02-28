@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 META_FILENAME = "metadata.json"
 MAPS_DIRNAME = "maps"
 THUMBS_DIRNAME = "thumbnails"
+RULERS_DIRNAME = "rulers"
+RULER_PORTRAITS_DIRNAME = "portraits"
 
 
 def _atomic_write(path: Path, data: str) -> None:
@@ -50,6 +52,7 @@ def create_campaign_on_disk(base_dir: Path, campaign: Campaign) -> Path:
     # maps and thumbnails dirs
     _ensure_dir(campaign_root / MAPS_DIRNAME)
     _ensure_dir(campaign_root / THUMBS_DIRNAME)
+    _ensure_dir(campaign_root / RULERS_DIRNAME / RULER_PORTRAITS_DIRNAME)
     # ensure filter subfolders won't be created until images are imported
     campaign.path = str(campaign_root)
     campaign.created_at = campaign.created_at or ""
