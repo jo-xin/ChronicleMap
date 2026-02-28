@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Tuple
 
@@ -24,6 +25,8 @@ if TYPE_CHECKING:
 META_FILENAME = "metadata.json"
 MAPS_DIRNAME = "maps"
 THUMBS_DIRNAME = "thumbnails"
+RULERS_DIRNAME = "rulers"
+RULER_PORTRAITS_DIRNAME = "portraits"
 
 
 def _atomic_write(path: Path, data: str) -> None:
@@ -49,6 +52,7 @@ def create_campaign_on_disk(base_dir: Path, campaign: Campaign) -> Path:
     # maps and thumbnails dirs
     _ensure_dir(campaign_root / MAPS_DIRNAME)
     _ensure_dir(campaign_root / THUMBS_DIRNAME)
+    _ensure_dir(campaign_root / RULERS_DIRNAME / RULER_PORTRAITS_DIRNAME)
     # ensure filter subfolders won't be created until images are imported
     campaign.path = str(campaign_root)
     campaign.created_at = campaign.created_at or ""
@@ -216,7 +220,7 @@ class StorageManager:
         """
         base_dir: Path where campaign folders will be created (ChronicleMap_Data/Campaigns or user-specified).
         """
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir / "Campaigns")
         _ensure_dir(self.base_dir)
 
     def create_campaign(self, name: str) -> Campaign:
@@ -227,18 +231,28 @@ class StorageManager:
 
     def load_campaign(self, name_or_path: str | Path) -> Campaign:
         p = Path(name_or_path)
+
+        # 情况1：如果是绝对路径，直接加载
+        if p.is_absolute():
+            if p.exists():
+                return load_campaign_from_disk(p)
+            raise FileNotFoundError(f"Campaign not found at {p}")
+
+        # 情况2：如果是相对路径且当前目录存在（向后兼容/显式路径）
         if p.exists():
             return load_campaign_from_disk(p)
-        else:
-            # assume a campaign under base_dir
-            candidate = self.base_dir / str(name_or_path)
-            if candidate.exists():
-                return load_campaign_from_disk(candidate)
-            raise FileNotFoundError(
-                f"Campaign {name_or_path} not found under base dir {self.base_dir}"
-            )
+
+        # 情况3：在 base_dir/Campaigns 下查找（新标准位置）
+        candidate = self.base_dir / p
+        if candidate.exists():
+            return load_campaign_from_disk(candidate)
+
+        raise FileNotFoundError(
+            f"Campaign '{name_or_path}' not found under {self.base_dir}"
+        )
 
     def save_campaign(self, campaign: Campaign) -> None:
+        campaign.modified_at = datetime.now(timezone.utc).isoformat()
         save_campaign_to_disk(campaign)
 
     def import_image(
@@ -247,12 +261,20 @@ class StorageManager:
         src_path: Path,
         filter_type: FilterType | str,
         date_str: Optional[str] = None,
+        create_dirs_if_missing: bool = True,
+        ocr_provider: Optional["OCRProvider"] = None,
+        ocr_roi_spec: Optional[Any] = None,
+        ocr_template_key: Optional[str] = None,
     ) -> Snapshot:
         return import_image_into_campaign(
             campaign=campaign,
             src_path=src_path,
             filter_type=filter_type,
             date_str=date_str,
+            create_dirs_if_missing=create_dirs_if_missing,
+            ocr_provider=ocr_provider,
+            ocr_roi_spec=ocr_roi_spec,
+            ocr_template_key=ocr_template_key,
         )
 
     def list_campaigns(self) -> Iterable[str]:
@@ -268,3 +290,51 @@ class StorageManager:
             if s.id == snapshot_id:
                 return s
         return None
+
+    def delete_snapshots(
+        self,
+        campaign: Campaign,
+        snapshot_ids: Iterable[str],
+        *,
+        delete_files: bool = True,
+    ) -> int:
+        id_set = {str(x) for x in snapshot_ids if x}
+        if not id_set:
+            return 0
+
+        removed = [s for s in campaign.snapshots if s.id in id_set]
+        if not removed:
+            return 0
+        kept = [s for s in campaign.snapshots if s.id not in id_set]
+
+        if delete_files:
+
+            def _norm_path(p: Optional[str]) -> Optional[str]:
+                if not p:
+                    return None
+                return str(Path(p).resolve(strict=False))
+
+            remaining_image_paths = {
+                _norm_path(s.path) for s in kept if _norm_path(s.path) is not None
+            }
+            remaining_thumb_paths = {
+                _norm_path(s.thumbnail)
+                for s in kept
+                if _norm_path(s.thumbnail) is not None
+            }
+
+            for snap in removed:
+                img_path = _norm_path(snap.path)
+                if img_path and img_path not in remaining_image_paths:
+                    p = Path(img_path)
+                    if p.exists():
+                        p.unlink()
+                thumb_path = _norm_path(snap.thumbnail)
+                if thumb_path and thumb_path not in remaining_thumb_paths:
+                    p = Path(thumb_path)
+                    if p.exists():
+                        p.unlink()
+
+        campaign.snapshots = kept
+        self.save_campaign(campaign)
+        return len(removed)

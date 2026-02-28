@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Optional, Union
 
 from chroniclemap.core.models import Campaign, FilterType, GameDate, Snapshot
@@ -22,12 +22,13 @@ class TemporalEngine:
             if self.campaign.snapshots:
                 self.current_date = self.campaign.snapshots[0].date
             else:
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 self.current_date = GameDate(now.year, now.month, now.day)
 
     # playback controls
-    def set_playback_speed(self, units: str, value: float):
-        self.campaign.config.playback_speed = {"units": units, "value": value}
+    def set_playback_speed(self, unit: str, value: float):
+
+        self.campaign.config.playback_speed = {"units": unit, "value": value}
 
     def get_playback_speed(self) -> dict:
         return self.campaign.config.playback_speed
@@ -52,12 +53,17 @@ class TemporalEngine:
         If ignore_leap_years is True, use no-leap ordinal arithmetic.
         """
         ps = self.get_playback_speed()
-        units = ps.get("units", "days_per_second")
+        units = ps.get("units", "days/sec")
         value = float(ps.get("value", 1.0))
-        if units != "days_per_second":
-            raise NotImplementedError(
-                "Only 'days_per_second' playback unit is implemented"
-            )
+
+        if units == "years/sec":
+            value *= 365 if self.ignore_leap_years else 365.2425
+        elif units == "months/sec":
+            value *= 30  # Simplified, real implementation should consider calendar
+        elif units == "days/sec":
+            pass
+        else:
+            raise ValueError(f"Invalid playback unit: {units}")
 
         days_advance = value * float(dt_seconds)
 

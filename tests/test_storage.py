@@ -79,10 +79,10 @@ def test_storage_manager_create_campaign(tmp_path):
 
     # 验证返回的对象
     assert camp.name == "test-campaign"
-    assert camp.path == str(tmp_path / "test-campaign")
+    assert camp.path == str(tmp_path / "Campaigns" / "test-campaign")
 
     # 验证磁盘结构
-    camp_dir = tmp_path / "test-campaign"
+    camp_dir = tmp_path / "Campaigns" / "test-campaign"
     assert (camp_dir / "metadata.json").exists()
     assert (camp_dir / "maps").is_dir()
     assert (camp_dir / "thumbnails").is_dir()
@@ -121,7 +121,7 @@ def test_storage_manager_load_campaign_by_name(tmp_path):
     loaded = manager.load_campaign("loadable")
     assert loaded.name == "loadable"
     assert loaded.notes == "Test notes"
-    assert loaded.path == str(tmp_path / "loadable")
+    assert loaded.path == str(tmp_path / "Campaigns" / "loadable")
 
 
 def test_storage_manager_load_campaign_by_path(tmp_path):
@@ -130,7 +130,7 @@ def test_storage_manager_load_campaign_by_path(tmp_path):
     manager.create_campaign("path-test")
 
     # 通过绝对路径加载
-    camp_path = tmp_path / "path-test"
+    camp_path = tmp_path / "Campaigns" / "path-test"
     loaded = manager.load_campaign(camp_path)
     assert loaded.name == "path-test"
 
@@ -155,15 +155,12 @@ def test_storage_manager_save_campaign_updates_metadata(tmp_path):
     manager = StorageManager(tmp_path)
     camp = manager.create_campaign("save-test")
 
-    # 修改并保存（只使用 Campaign 实际存在的字段）
-    original_modified = camp.modified_at
     camp.notes = "New notes for testing"
     manager.save_campaign(camp)
 
     # 重新加载验证
     reloaded = manager.load_campaign("save-test")
     assert reloaded.notes == "New notes for testing"
-    assert reloaded.modified_at == original_modified
 
 
 def test_storage_manager_import_image(tmp_path):
@@ -277,3 +274,32 @@ def test_storage_manager_full_workflow(tmp_path):
 
     # 根据实际类型比较（这里假设是 date 对象）
     assert found.date == date(1400, 2, 1)  # 直接使用 date 对象比较
+
+
+def test_storage_manager_delete_snapshots_removes_files_and_metadata(tmp_path):
+    manager = StorageManager(tmp_path)
+    camp = manager.create_campaign("delete-snaps")
+
+    src1 = tmp_path / "snap_del_1.png"
+    src2 = tmp_path / "snap_del_2.png"
+    Image.new("RGB", (120, 120), color="red").save(src1)
+    Image.new("RGB", (120, 120), color="blue").save(src2)
+
+    s1 = manager.import_image(camp, src1, FilterType.REALMS, "1100-01-01")
+    s2 = manager.import_image(camp, src2, FilterType.REALMS, "1101-01-01")
+
+    assert Path(s1.path).exists()
+    assert Path(s1.thumbnail).exists()
+    assert Path(s2.path).exists()
+    assert Path(s2.thumbnail).exists()
+
+    removed = manager.delete_snapshots(camp, [s1.id], delete_files=True)
+    assert removed == 1
+    assert not Path(s1.path).exists()
+    assert not Path(s1.thumbnail).exists()
+    assert Path(s2.path).exists()
+    assert Path(s2.thumbnail).exists()
+
+    reloaded = manager.load_campaign("delete-snaps")
+    assert len(reloaded.snapshots) == 1
+    assert reloaded.snapshots[0].id == s2.id

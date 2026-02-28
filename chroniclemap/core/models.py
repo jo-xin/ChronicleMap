@@ -19,6 +19,7 @@ import json
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -415,8 +416,13 @@ class Ruler:
     full_name: Optional[str] = None
     display_name: Optional[str] = None
     epithet: Optional[str] = None
+    birth_date: Optional[GameDate] = None
+    death_date: Optional[GameDate] = None
     start_date: Optional[GameDate] = None
     end_date: Optional[GameDate] = None
+    player_start_date: Optional[GameDate] = None
+    player_end_date: Optional[GameDate] = None
+    portrait_path: Optional[str] = None
     rank_periods: List[RankPeriod] = field(default_factory=list)
     notes: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
@@ -427,8 +433,17 @@ class Ruler:
             "full_name": self.full_name,
             "display_name": self.display_name,
             "epithet": self.epithet,
+            "birth_date": self.birth_date.to_iso() if self.birth_date else None,
+            "death_date": self.death_date.to_iso() if self.death_date else None,
             "start_date": self.start_date.to_iso() if self.start_date else None,
             "end_date": self.end_date.to_iso() if self.end_date else None,
+            "player_start_date": (
+                self.player_start_date.to_iso() if self.player_start_date else None
+            ),
+            "player_end_date": (
+                self.player_end_date.to_iso() if self.player_end_date else None
+            ),
+            "portrait_path": self.portrait_path,
             "rank_periods": [rp.to_dict() for rp in self.rank_periods],
             "notes": self.notes,
             "meta": self.meta,
@@ -441,6 +456,16 @@ class Ruler:
             full_name=data.get("full_name"),
             display_name=data.get("display_name"),
             epithet=data.get("epithet"),
+            birth_date=(
+                GameDate.fromiso(data.get("birth_date"))
+                if data.get("birth_date")
+                else None
+            ),
+            death_date=(
+                GameDate.fromiso(data.get("death_date"))
+                if data.get("death_date")
+                else None
+            ),
             start_date=(
                 GameDate.fromiso(data.get("start_date"))
                 if data.get("start_date")
@@ -449,6 +474,17 @@ class Ruler:
             end_date=(
                 GameDate.fromiso(data.get("end_date")) if data.get("end_date") else None
             ),
+            player_start_date=(
+                GameDate.fromiso(data.get("player_start_date"))
+                if data.get("player_start_date")
+                else None
+            ),
+            player_end_date=(
+                GameDate.fromiso(data.get("player_end_date"))
+                if data.get("player_end_date")
+                else None
+            ),
+            portrait_path=data.get("portrait_path"),
             rank_periods=[
                 RankPeriod.from_dict(x) for x in data.get("rank_periods", [])
             ],
@@ -460,7 +496,7 @@ class Ruler:
 @dataclass
 class CampaignConfig:
     playback_speed: Dict[str, Any] = field(
-        default_factory=lambda: {"units": "days_per_second", "value": 365}
+        default_factory=lambda: {"units": "days/sec", "value": 365}
     )
     default_filter: FilterType = FilterType.REALMS
     upload_period_days: Optional[int] = None
@@ -478,7 +514,7 @@ class CampaignConfig:
     def from_dict(cls, data: Dict[str, Any]) -> "CampaignConfig":
         return cls(
             playback_speed=data.get(
-                "playback_speed", {"units": "days_per_second", "value": 365}
+                "playback_speed", {"units": "days/sec", "value": 365}
             ),
             default_filter=FilterType(
                 data.get("default_filter", FilterType.REALMS.value)
@@ -500,6 +536,17 @@ class Campaign:
     created_at: Optional[str] = None
     modified_at: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """对象初始化后自动设置时间戳"""
+        now = datetime.now().isoformat()
+
+        # 只在创建时设置 created_at（如果是从字典反序列化，会保留原值）
+        if self.created_at is None:
+            self.created_at = now
+
+        # modified_at 总是更新为当前时间
+        self.modified_at = now
 
     def add_snapshot(self, snapshot: Snapshot) -> None:
         if any(s.id == snapshot.id for s in self.snapshots):
@@ -607,19 +654,33 @@ def new_ruler(
     *,
     full_name: Optional[str] = None,
     display_name: Optional[str] = None,
+    birth_date: Optional[Union[str, GameDate]] = None,
+    death_date: Optional[Union[str, GameDate]] = None,
     start_date: Optional[Union[str, GameDate]] = None,
     end_date: Optional[Union[str, GameDate]] = None,
+    player_start_date: Optional[Union[str, GameDate]] = None,
+    player_end_date: Optional[Union[str, GameDate]] = None,
+    portrait_path: Optional[str] = None,
     epithet: Optional[str] = None,
 ) -> Ruler:
+    bd = GameDate.fromiso(birth_date) if birth_date else None
+    dd = GameDate.fromiso(death_date) if death_date else None
     sd = GameDate.fromiso(start_date) if start_date else None
     ed = GameDate.fromiso(end_date) if end_date else None
+    psd = GameDate.fromiso(player_start_date) if player_start_date else None
+    ped = GameDate.fromiso(player_end_date) if player_end_date else None
     return Ruler(
         id=str(uuid.uuid4()),
         full_name=full_name,
         display_name=display_name,
         epithet=epithet,
+        birth_date=bd,
+        death_date=dd,
         start_date=sd,
         end_date=ed,
+        player_start_date=psd,
+        player_end_date=ped,
+        portrait_path=portrait_path,
         rank_periods=[],
     )
 
