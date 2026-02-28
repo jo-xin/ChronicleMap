@@ -290,3 +290,51 @@ class StorageManager:
             if s.id == snapshot_id:
                 return s
         return None
+
+    def delete_snapshots(
+        self,
+        campaign: Campaign,
+        snapshot_ids: Iterable[str],
+        *,
+        delete_files: bool = True,
+    ) -> int:
+        id_set = {str(x) for x in snapshot_ids if x}
+        if not id_set:
+            return 0
+
+        removed = [s for s in campaign.snapshots if s.id in id_set]
+        if not removed:
+            return 0
+        kept = [s for s in campaign.snapshots if s.id not in id_set]
+
+        if delete_files:
+
+            def _norm_path(p: Optional[str]) -> Optional[str]:
+                if not p:
+                    return None
+                return str(Path(p).resolve(strict=False))
+
+            remaining_image_paths = {
+                _norm_path(s.path) for s in kept if _norm_path(s.path) is not None
+            }
+            remaining_thumb_paths = {
+                _norm_path(s.thumbnail)
+                for s in kept
+                if _norm_path(s.thumbnail) is not None
+            }
+
+            for snap in removed:
+                img_path = _norm_path(snap.path)
+                if img_path and img_path not in remaining_image_paths:
+                    p = Path(img_path)
+                    if p.exists():
+                        p.unlink()
+                thumb_path = _norm_path(snap.thumbnail)
+                if thumb_path and thumb_path not in remaining_thumb_paths:
+                    p = Path(thumb_path)
+                    if p.exists():
+                        p.unlink()
+
+        campaign.snapshots = kept
+        self.save_campaign(campaign)
+        return len(removed)

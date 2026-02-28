@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QGuiApplication, QPixmap
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -66,6 +66,194 @@ RANK_BORDER_COLORS = {
     Rank.ADVENTURE: "#ff66cc",
     Rank.NONE: "#ffffff",
 }
+
+RANK_FILL_COLORS = {
+    Rank.HEGEMONY: "#ff5a5a",
+    Rank.EMPIRE: "#8f5bff",
+    Rank.KINGDOM: "#f0ca55",
+    Rank.DUCHY: "#45d7e6",
+    Rank.COUNTY: "#5ddb8f",
+    Rank.ADVENTURE: "#ff89d8",
+    Rank.NONE: "#d6d6d6",
+}
+
+
+class RulerTimelineWidget(QWidget):
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._ord_min: Optional[int] = None
+        self._ord_max: Optional[int] = None
+        self._current_ord: Optional[int] = None
+        self._segments: list[dict] = []
+        self._groups: list[dict] = []
+        self.setMinimumHeight(62)
+        self.setMaximumHeight(76)
+
+    def set_range(self, ord_min: Optional[int], ord_max: Optional[int]) -> None:
+        self._ord_min = ord_min
+        self._ord_max = ord_max
+        self.update()
+
+    def set_current_ordinal(self, ordinal: Optional[int]) -> None:
+        self._current_ord = ordinal
+        self.update()
+
+    def _pick_rank_for_interval(
+        self, rank_periods: list[RankPeriod], start_ord: int, end_ord: int
+    ) -> Rank:
+        best = Rank.NONE
+        best_score = RANK_ORDER[best]
+        for rp in rank_periods:
+            rp_start = rp.from_date.to_ordinal(False)
+            rp_end = (rp.to_date or GameDate(9999, 12, 31)).to_ordinal(False)
+            if rp_end < start_ord or rp_start > end_ord:
+                continue
+            score = RANK_ORDER.get(rp.rank, 0)
+            if score > best_score:
+                best = rp.rank
+                best_score = score
+        return best
+
+    def set_rulers(self, rulers: list[Ruler]) -> None:
+        self._segments = []
+        self._groups = []
+        if (
+            self._ord_min is None
+            or self._ord_max is None
+            or self._ord_min >= self._ord_max
+        ):
+            self.update()
+            return
+
+        for ruler in rulers:
+            p_start = ruler.player_start_date or ruler.start_date
+            p_end = ruler.player_end_date or ruler.end_date
+            if p_start is None or p_end is None:
+                continue
+            p_start_ord = max(self._ord_min, p_start.to_ordinal(False))
+            p_end_ord = min(self._ord_max, p_end.to_ordinal(False))
+            if p_end_ord < p_start_ord:
+                continue
+
+            cuts = {p_start_ord, p_end_ord + 1}
+            for rp in ruler.rank_periods:
+                rp_s = max(p_start_ord, rp.from_date.to_ordinal(False))
+                rp_e = min(
+                    p_end_ord,
+                    (rp.to_date.to_ordinal(False) if rp.to_date else p_end_ord),
+                )
+                if rp_e >= rp_s:
+                    cuts.add(rp_s)
+                    cuts.add(rp_e + 1)
+            sorted_cuts = sorted(cuts)
+            ruler_segments = []
+            for i in range(len(sorted_cuts) - 1):
+                s = sorted_cuts[i]
+                e = sorted_cuts[i + 1] - 1
+                if e < s:
+                    continue
+                rank = self._pick_rank_for_interval(ruler.rank_periods, s, e)
+                ruler_segments.append(
+                    {
+                        "start": s,
+                        "end": e,
+                        "rank": rank,
+                        "color": RANK_FILL_COLORS.get(rank, "#d6d6d6"),
+                        "ruler_id": ruler.id,
+                    }
+                )
+            if not ruler_segments:
+                continue
+            self._segments.extend(ruler_segments)
+            self._groups.append(
+                {
+                    "start": ruler_segments[0]["start"],
+                    "end": ruler_segments[-1]["end"],
+                    "ruler_id": ruler.id,
+                    "label": (ruler.display_name or ruler.full_name or "Unknown"),
+                }
+            )
+
+        self.update()
+
+    def _x_for_ordinal(self, ordinal: int, left: int, width: int) -> int:
+        if (
+            self._ord_min is None
+            or self._ord_max is None
+            or self._ord_max == self._ord_min
+        ):
+            return left
+        ratio = (ordinal - self._ord_min) / (self._ord_max - self._ord_min)
+        return left + int(ratio * width)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        rect = self.rect().adjusted(4, 6, -4, -6)
+
+        p.fillRect(rect, QColor("#1f1f1f"))
+        bar_rect = rect.adjusted(6, 6, -6, -20)
+        if bar_rect.width() <= 0 or bar_rect.height() <= 0:
+            return
+
+        p.fillRect(bar_rect, QColor("#5f5f5f"))
+
+        if (
+            self._ord_min is None
+            or self._ord_max is None
+            or self._ord_min >= self._ord_max
+        ):
+            p.setPen(QColor("#d0d0d0"))
+            p.drawText(rect, Qt.AlignCenter, "Ruler timeline unavailable")
+            p.end()
+            return
+
+        for group in self._groups:
+            x1 = self._x_for_ordinal(group["start"], bar_rect.left(), bar_rect.width())
+            x2 = self._x_for_ordinal(group["end"], bar_rect.left(), bar_rect.width())
+            if x2 <= x1:
+                x2 = x1 + 1
+            group_rect = bar_rect.adjusted(0, -2, 0, 2)
+            group_rect.setLeft(x1)
+            group_rect.setRight(x2)
+            active = (
+                self._current_ord is not None
+                and group["start"] <= self._current_ord <= group["end"]
+            )
+            pen = QPen(QColor("#f5f5f5") if active else QColor("#bdbdbd"))
+            pen.setWidth(2 if active else 1)
+            p.setPen(pen)
+            p.drawRect(group_rect)
+
+            p.setPen(QColor("#e8e8e8"))
+            p.drawText(
+                x1 + 2,
+                bar_rect.bottom() + 14,
+                max(1, x2 - x1 - 3),
+                12,
+                Qt.AlignLeft | Qt.AlignVCenter,
+                str(group["label"]),
+            )
+
+        for seg in self._segments:
+            x1 = self._x_for_ordinal(seg["start"], bar_rect.left(), bar_rect.width())
+            x2 = self._x_for_ordinal(seg["end"], bar_rect.left(), bar_rect.width())
+            if x2 <= x1:
+                x2 = x1 + 1
+            seg_rect = bar_rect.adjusted(1, 1, -1, -1)
+            seg_rect.setLeft(x1)
+            seg_rect.setRight(x2)
+            p.fillRect(seg_rect, QColor(seg["color"]))
+
+        if self._current_ord is not None:
+            cx = self._x_for_ordinal(
+                self._current_ord, bar_rect.left(), bar_rect.width()
+            )
+            p.setPen(QPen(QColor("#ffffff"), 2))
+            p.drawLine(cx, bar_rect.top() - 2, cx, bar_rect.bottom() + 2)
+
+        p.end()
 
 
 class RulerEditorDialog(QDialog):
@@ -197,7 +385,13 @@ class RulerEditorDialog(QDialog):
         self.rank_table.insertRow(row)
         self.rank_table.setItem(row, 0, QTableWidgetItem(from_date))
         self.rank_table.setItem(row, 1, QTableWidgetItem(to_date))
-        self.rank_table.setItem(row, 2, QTableWidgetItem(rank_value))
+        rank_combo = QComboBox()
+        rank_combo.addItems([r.value for r in Rank])
+        if rank_value in [r.value for r in Rank]:
+            rank_combo.setCurrentText(rank_value)
+        else:
+            rank_combo.setCurrentText(Rank.NONE.value)
+        self.rank_table.setCellWidget(row, 2, rank_combo)
         self.rank_table.setItem(row, 3, QTableWidgetItem(note))
 
     def _delete_selected_rank_rows(self) -> None:
@@ -341,7 +535,13 @@ class RulerEditorDialog(QDialog):
 
                 from_text = from_item.text().strip() if from_item else ""
                 to_text = to_item.text().strip() if to_item else ""
-                rank_text = rank_item.text().strip() if rank_item else Rank.NONE.value
+                rank_widget = self.rank_table.cellWidget(row, 2)
+                if isinstance(rank_widget, QComboBox):
+                    rank_text = rank_widget.currentText().strip()
+                else:
+                    rank_text = (
+                        rank_item.text().strip() if rank_item else Rank.NONE.value
+                    )
                 note_text = note_item.text().strip() if note_item else ""
 
                 if not from_text:
@@ -492,9 +692,8 @@ class PlayerWindow(QWidget):
         date_jump_row.addWidget(self.current_date_jump_btn)
         center.addLayout(date_jump_row)
 
-        self.ruler_timeline = QSlider(Qt.Horizontal)
-        self.ruler_timeline.setEnabled(False)
-        center.addWidget(QLabel("Ruler timeline (planned)"))
+        self.ruler_timeline = RulerTimelineWidget()
+        center.addWidget(QLabel("Ruler timeline"))
         center.addWidget(self.ruler_timeline)
 
         right = QVBoxLayout()
@@ -564,6 +763,8 @@ class PlayerWindow(QWidget):
         if not self.campaign.snapshots:
             self.timeline_slider.setEnabled(False)
             self.timeline_label.setText("Timeline: (no snapshots)")
+            self.ruler_timeline.set_range(None, None)
+            self.ruler_timeline.set_rulers(self.campaign.rulers)
             return
         ordinals = [
             s.date.to_ordinal(ignore_leap=False) for s in self.campaign.snapshots
@@ -574,6 +775,8 @@ class PlayerWindow(QWidget):
         self.timeline_slider.setMinimum(self._ord_min)
         self.timeline_slider.setMaximum(self._ord_max)
         self.timeline_slider.setValue(self.engine.get_current_date().to_ordinal(False))
+        self.ruler_timeline.set_range(self._ord_min, self._ord_max)
+        self.ruler_timeline.set_rulers(self.campaign.rulers)
         self._update_timeline_label()
 
     def _current_filter(self) -> Optional[FilterType]:
@@ -751,6 +954,7 @@ class PlayerWindow(QWidget):
         elif self._ruler_index >= len(self.campaign.rulers):
             self._ruler_index = len(self.campaign.rulers) - 1
         self.storage.save_campaign(self.campaign)
+        self.ruler_timeline.set_rulers(self.campaign.rulers)
         self._refresh_ruler_card()
 
     def _on_prev_ruler(self) -> None:
@@ -870,6 +1074,7 @@ class PlayerWindow(QWidget):
             if note_short:
                 lines.append(f"Note: {note_short}")
         self.ruler_summary.setText("\n".join(lines))
+        self.ruler_timeline.set_rulers(self.campaign.rulers)
 
     def _update_frame(self) -> None:
         cur_date = self.engine.get_current_date()
@@ -887,6 +1092,7 @@ class PlayerWindow(QWidget):
         self.current_date_edit.blockSignals(True)
         self.current_date_edit.setText(cur_date.to_iso())
         self.current_date_edit.blockSignals(False)
+        self.ruler_timeline.set_current_ordinal(cur_date.to_ordinal(False))
 
         if snap:
             self.current_snapshot_label.setText(os.path.basename(snap.path))

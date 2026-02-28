@@ -91,6 +91,8 @@ class ImportWidget(QWidget):
         interval_box = QGroupBox("Default interval for next snapshot")
         ib_layout = QHBoxLayout()
         self.interval_spin = QSpinBox()
+        self.interval_spin.setMinimum(1)
+        self.interval_spin.setMaximum(100000)
         self.interval_spin.setValue(1)
         self.interval_unit = QComboBox()
         self.interval_unit.addItems(["years", "months", "days"])
@@ -116,9 +118,16 @@ class ImportWidget(QWidget):
         self.file_btn.clicked.connect(self.on_choose_file)
         self.batch_btn.clicked.connect(self.on_batch_import)
         self.paste_btn.clicked.connect(self.on_paste)
+        self.interval_spin.valueChanged.connect(
+            lambda _v: self._save_interval_settings()
+        )
+        self.interval_unit.currentTextChanged.connect(
+            lambda _u: self._save_interval_settings()
+        )
 
         # store filters locally
         self._filters = meta_filters
+        self._load_interval_settings(meta)
 
     def current_filter(self) -> str:
         for rb in self.filter_buttons:
@@ -360,3 +369,50 @@ class ImportWidget(QWidget):
                 # clamp feb 29 -> feb 28 if needed
                 nd = GameDate(ny, m, min(d, 28))
             return nd.to_iso()
+
+    def _load_interval_settings(self, metadata: dict) -> None:
+        cfg = metadata.get("config", {}) if isinstance(metadata, dict) else {}
+        meta_block = metadata.get("meta", {}) if isinstance(metadata, dict) else {}
+        interval = (
+            meta_block.get("upload_interval") if isinstance(meta_block, dict) else None
+        )
+
+        if isinstance(interval, dict):
+            value = int(interval.get("value", 1))
+            unit = str(interval.get("unit", "years"))
+        else:
+            upload_days = cfg.get("upload_period_days")
+            if isinstance(upload_days, int) and upload_days > 0:
+                value = upload_days
+                unit = "days"
+            else:
+                value = 1
+                unit = "years"
+
+        self.interval_spin.blockSignals(True)
+        self.interval_unit.blockSignals(True)
+        self.interval_spin.setValue(max(1, value))
+        if unit in ["years", "months", "days"]:
+            self.interval_unit.setCurrentText(unit)
+        self.interval_spin.blockSignals(False)
+        self.interval_unit.blockSignals(False)
+
+    def _save_interval_settings(self) -> None:
+        try:
+            campaign = self.storage.load_campaign(self.campaign_name)
+        except Exception:
+            return
+
+        value = int(self.interval_spin.value())
+        unit = self.interval_unit.currentText()
+        days = value
+        if unit == "years":
+            days = value * 365
+        elif unit == "months":
+            days = value * 30
+
+        campaign.config.upload_period_days = days
+        if not isinstance(campaign.meta, dict):
+            campaign.meta = {}
+        campaign.meta["upload_interval"] = {"value": value, "unit": unit}
+        self.storage.save_campaign(campaign)

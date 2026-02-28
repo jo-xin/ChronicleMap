@@ -274,3 +274,32 @@ def test_storage_manager_full_workflow(tmp_path):
 
     # 根据实际类型比较（这里假设是 date 对象）
     assert found.date == date(1400, 2, 1)  # 直接使用 date 对象比较
+
+
+def test_storage_manager_delete_snapshots_removes_files_and_metadata(tmp_path):
+    manager = StorageManager(tmp_path)
+    camp = manager.create_campaign("delete-snaps")
+
+    src1 = tmp_path / "snap_del_1.png"
+    src2 = tmp_path / "snap_del_2.png"
+    Image.new("RGB", (120, 120), color="red").save(src1)
+    Image.new("RGB", (120, 120), color="blue").save(src2)
+
+    s1 = manager.import_image(camp, src1, FilterType.REALMS, "1100-01-01")
+    s2 = manager.import_image(camp, src2, FilterType.REALMS, "1101-01-01")
+
+    assert Path(s1.path).exists()
+    assert Path(s1.thumbnail).exists()
+    assert Path(s2.path).exists()
+    assert Path(s2.thumbnail).exists()
+
+    removed = manager.delete_snapshots(camp, [s1.id], delete_files=True)
+    assert removed == 1
+    assert not Path(s1.path).exists()
+    assert not Path(s1.thumbnail).exists()
+    assert Path(s2.path).exists()
+    assert Path(s2.thumbnail).exists()
+
+    reloaded = manager.load_campaign("delete-snaps")
+    assert len(reloaded.snapshots) == 1
+    assert reloaded.snapshots[0].id == s2.id

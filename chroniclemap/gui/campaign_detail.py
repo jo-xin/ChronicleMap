@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -131,6 +132,9 @@ class CampaignDetailWindow(QWidget):
         bulk_date_row.addWidget(self.bulk_date_btn)
         bulk_layout.addLayout(bulk_date_row)
 
+        self.bulk_delete_btn = QPushButton("Delete selected snapshots")
+        bulk_layout.addWidget(self.bulk_delete_btn)
+
         bulk_group.setLayout(bulk_layout)
         right_panel.addWidget(bulk_group)
 
@@ -178,6 +182,7 @@ class CampaignDetailWindow(QWidget):
         self.single_apply_btn.clicked.connect(self._apply_single_edit)
         self.bulk_filter_btn.clicked.connect(self._apply_bulk_filter)
         self.bulk_date_btn.clicked.connect(self._apply_bulk_date_offset)
+        self.bulk_delete_btn.clicked.connect(self._delete_selected_snapshots)
 
         self.refresh_snapshots()
 
@@ -392,4 +397,23 @@ class CampaignDetailWindow(QWidget):
 
         camp.snapshots.sort(key=lambda s: s.date.to_ordinal(False))
         self.storage.save_campaign(camp)
+        self.refresh_snapshots()
+
+    def _delete_selected_snapshots(self) -> None:
+        selected = self._selected_snapshot_dicts()
+        if not selected:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete snapshots",
+            f"Delete {len(selected)} selected snapshot(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        camp = self._load_campaign()
+        id_list = [s.get("id") for s in selected if s.get("id")]
+        self.storage.delete_snapshots(camp, id_list, delete_files=True)
         self.refresh_snapshots()
