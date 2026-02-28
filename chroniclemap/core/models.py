@@ -461,7 +461,7 @@ class Ruler:
 @dataclass
 class CampaignConfig:
     playback_speed: Dict[str, Any] = field(
-        default_factory=lambda: {"units": "days_per_second", "value": 365}
+        default_factory=lambda: {"units": "days/sec", "value": 365}
     )
     default_filter: FilterType = FilterType.REALMS
     upload_period_days: Optional[int] = None
@@ -479,7 +479,7 @@ class CampaignConfig:
     def from_dict(cls, data: Dict[str, Any]) -> "CampaignConfig":
         return cls(
             playback_speed=data.get(
-                "playback_speed", {"units": "days_per_second", "value": 365}
+                "playback_speed", {"units": "days/sec", "value": 365}
             ),
             default_filter=FilterType(
                 data.get("default_filter", FilterType.REALMS.value)

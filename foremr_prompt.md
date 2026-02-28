@@ -33,7 +33,7 @@
 
 **时间轴引擎（Temporal）**
 
-* `chroniclemap/temporal/engine.py`：headless 的 `TemporalEngine`，支持 play/pause/seek/tick（以 `days_per_second` 为单位），并提供 `get_snapshot_for`、`next_snapshot_after` 与 `step_to_next_snapshot`。
+* `chroniclemap/temporal/engine.py`：headless 的 `TemporalEngine`，支持 play/pause/seek/tick（以 `days/sec` 为单位），并提供 `get_snapshot_for`、`next_snapshot_after` 与 `step_to_next_snapshot`。
 * 已加入 CK3 风格的“**无闰年**”开关（`ignore_leap_years=True` 默认），并实现专门的无闰年 ordinal 算法。
 * 单元测试 `tests/test_temporal.py` 通过。
 

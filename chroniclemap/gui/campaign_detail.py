@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QUrl
@@ -77,8 +78,14 @@ class CampaignDetailWindow(QWidget):
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setMinimumHeight(200)
         preview_layout.addWidget(self.preview_label)
-        self.open_external_btn = QPushButton("Open in default viewer")
-        preview_layout.addWidget(self.open_external_btn)
+        btn_layout = QHBoxLayout()
+        self.open_folder_btn = QPushButton("Open containing folder")  # 左边：打开目录
+        self.open_external_btn = QPushButton(
+            "Open in default viewer"
+        )  # 右边：默认查看器
+        btn_layout.addWidget(self.open_folder_btn)
+        btn_layout.addWidget(self.open_external_btn)
+        preview_layout.addLayout(btn_layout)
         preview_group.setLayout(preview_layout)
         right_panel.addWidget(preview_group)
 
@@ -166,6 +173,7 @@ class CampaignDetailWindow(QWidget):
         self.snapshot_list.itemSelectionChanged.connect(self._on_selection_changed)
 
         # 信号绑定：单条编辑 / 打开外部查看器 / 批量编辑
+        self.open_folder_btn.clicked.connect(self._open_selected_folder)  # 新增
         self.open_external_btn.clicked.connect(self._open_selected_external)
         self.single_apply_btn.clicked.connect(self._apply_single_edit)
         self.bulk_filter_btn.clicked.connect(self._apply_bulk_filter)
@@ -197,7 +205,7 @@ class CampaignDetailWindow(QWidget):
             if current_filter and filter_type and filter_type != current_filter:
                 continue
             path = s.get("path") or ""
-            text = f"{date} [{filter_type}] | {path}"
+            text = f"{date} [{filter_type}] | {os.path.basename(path)}"
             item = QListWidgetItem(text)
             # 把原始快照 dict 挂到 item 上，方便后续找到 id/path 等
             item.setData(Qt.UserRole, s)
@@ -254,6 +262,24 @@ class CampaignDetailWindow(QWidget):
         if filt and filt in [f.value for f in FilterType]:
             idx = [f.value for f in FilterType].index(filt)
             self.single_filter_combo.setCurrentIndex(idx)
+
+    def _open_selected_folder(self) -> None:
+        """打开第一个选中快照所在的目录。"""
+        selected = self._selected_snapshot_dicts()
+        if not selected:
+            return
+        path = selected[0].get("path")
+        if not path:
+            return
+
+        # 获取目录路径
+        folder_path = os.path.dirname(path)
+        if not os.path.exists(folder_path):
+            return
+
+        # 使用 QDesktopServices 打开目录
+        url = QUrl.fromLocalFile(folder_path)
+        QDesktopServices.openUrl(url)
 
     def _open_selected_external(self) -> None:
         """用系统默认图片查看器打开第一个选中的快照。"""

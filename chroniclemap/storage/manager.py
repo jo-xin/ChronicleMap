@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Tuple
 
@@ -248,6 +249,7 @@ class StorageManager:
         )
 
     def save_campaign(self, campaign: Campaign) -> None:
+        campaign.modified_at = datetime.now(timezone.utc).isoformat()
         save_campaign_to_disk(campaign)
 
     def import_image(

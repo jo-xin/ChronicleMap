@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -64,8 +66,21 @@ class PlayerWindow(QWidget):
         self.speed_spin.setValue(
             float(self.campaign.config.playback_speed.get("value", 365))
         )
-        speed_row.addWidget(QLabel("Speed (days/sec):"))
+
+        # 新增单位选择下拉框
+        self.speed_unit = QComboBox()
+        self.speed_unit.addItems(["days/sec", "months/sec", "years/sec"])
+        speed_row.addWidget(QLabel("Speed:"))
         speed_row.addWidget(self.speed_spin)
+        speed_row.addWidget(self.speed_unit)
+
+        ps = self.campaign.config.playback_speed
+        self.speed_spin.setValue(float(ps.get("value", 365)))
+
+        # 从配置恢复单位
+        saved_unit = ps.get("units", "days/sec")
+        if saved_unit in ["days/sec", "months/sec", "years/sec"]:
+            self.speed_unit.setCurrentText(saved_unit)
 
         left.addWidget(self.play_btn)
         left.addWidget(self.pause_btn)
@@ -112,6 +127,23 @@ class PlayerWindow(QWidget):
 
         self.current_date_label = QLabel("")
         self.current_snapshot_label = QLabel("")
+        self.current_snapshot_label.setMaximumWidth(400)  # 限定最大宽度
+        self.current_snapshot_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )  # 允许选中
+        self.current_snapshot_label.setStyleSheet(
+            """
+            QLabel {
+                qproperty-alignment: AlignLeft;
+                padding: 2px;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+            }
+        """
+        )
+        self.current_snapshot_label.setSizePolicy(
+            QSizePolicy.Ignored, QSizePolicy.Preferred
+        )
         right.addWidget(QLabel("Current date:"))
         right.addWidget(self.current_date_label)
         right.addWidget(QLabel("Current snapshot:"))
@@ -129,7 +161,13 @@ class PlayerWindow(QWidget):
         self.pause_btn.clicked.connect(self._on_pause)
         self.prev_btn.clicked.connect(self._on_prev_snapshot)
         self.next_btn.clicked.connect(self._on_next_snapshot)
-        self.speed_spin.valueChanged.connect(self._on_speed_changed)
+        # self.speed_spin.valueChanged.connect(self._on_speed_changed)
+        self.speed_spin.valueChanged.connect(
+            lambda v: self._on_speed_changed(v, self.speed_unit.currentText())
+        )
+        self.speed_unit.currentTextChanged.connect(
+            lambda u: self._on_speed_changed(self.speed_spin.value(), u)
+        )
         self.timeline_slider.valueChanged.connect(self._on_slider_changed)
         self.filter_combo.currentTextChanged.connect(lambda _txt: self._update_frame())
 
@@ -197,8 +235,12 @@ class PlayerWindow(QWidget):
         if nxt:
             self._update_frame()
 
-    def _on_speed_changed(self, value: float) -> None:
-        self.engine.set_playback_speed("days_per_second", float(value))
+    def _on_speed_changed(self, value: float, unit: str) -> None:
+        # 转换为基准单位（days/sec）
+        self.engine.set_playback_speed(unit, value)
+
+        self.campaign.config.playback_speed = {"units": unit, "value": value}
+        self.storage.save_campaign(self.campaign)
 
     def _on_slider_changed(self, value: int) -> None:
         """用户拖动时间轴时，将当前日期设置为对应 ordinal。"""
@@ -237,7 +279,7 @@ class PlayerWindow(QWidget):
         self.current_date_label.setText(cur_date.to_iso())
 
         if snap:
-            self.current_snapshot_label.setText(snap.path)
+            self.current_snapshot_label.setText(os.path.basename(snap.path))
             pix = QPixmap(snap.path)
             if not pix.isNull():
                 pix = pix.scaled(

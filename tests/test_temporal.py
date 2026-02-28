@@ -49,7 +49,7 @@ def test_engine_tick_ignore_leap_years():
     """
     camp = new_campaign("no-leap-test", path=None)
     engine = TemporalEngine(campaign=camp, ignore_leap_years=True)
-    engine.set_playback_speed("days_per_second", 1.0)
+    engine.set_playback_speed("days/sec", 1.0)
 
     # Test 1: 365 days from 2000-01-01 should reach 2001-01-01
     # (2000 is treated as 365 days, not 366)
@@ -83,7 +83,7 @@ def test_engine_tick_respect_leap_years():
     """
     camp = new_campaign("leap-test", path=None)
     engine = TemporalEngine(campaign=camp, ignore_leap_years=False)
-    engine.set_playback_speed("days_per_second", 1.0)
+    engine.set_playback_speed("days/sec", 1.0)
 
     # Test 1: From leap year 2000, advancing 365 days lands on 2000-12-31
     # (because 2000 has 366 days, day 365 is Dec 31, not Jan 1 of next year)
@@ -125,7 +125,7 @@ def test_engine_tick_fractional_days():
     # No-leap mode
     camp = new_campaign("frac-test", path=None)
     engine = TemporalEngine(campaign=camp, ignore_leap_years=True)
-    engine.set_playback_speed("days_per_second", 0.5)  # 0.5 days per second
+    engine.set_playback_speed("days/sec", 0.5)  # 0.5 days per second
 
     engine.seek(date(2000, 1, 1))
     engine.tick(2.0)  # 2 seconds * 0.5 days/sec = 1 day
@@ -133,7 +133,7 @@ def test_engine_tick_fractional_days():
 
     # Standard mode
     engine2 = TemporalEngine(campaign=camp, ignore_leap_years=False)
-    engine2.set_playback_speed("days_per_second", 0.5)
+    engine2.set_playback_speed("days/sec", 0.5)
     engine2.seek(date(2000, 1, 1))
     engine2.tick(2.0)
     assert engine2.get_current_date() == date(2000, 1, 2)
@@ -148,7 +148,7 @@ def test_engine_playback_speed_variations():
 
     # Test 1: Speed = 1 day/second, tick 1 second = 1 day advancement
     engine = TemporalEngine(campaign=camp, ignore_leap_years=True)
-    engine.set_playback_speed("days_per_second", 1.0)
+    engine.set_playback_speed("days/sec", 1.0)
     engine.seek(date(2000, 12, 31))
     engine.tick(1.0)
     assert engine.get_current_date() == date(
@@ -157,7 +157,7 @@ def test_engine_playback_speed_variations():
 
     # Test 2: Speed = 365 days/second, tick 1 second = 365 days (1 year)
     engine.seek(date(2000, 12, 31))  # Reset
-    engine.set_playback_speed("days_per_second", 365.0)
+    engine.set_playback_speed("days/sec", 365.0)
     engine.tick(1.0)
     assert engine.get_current_date() == date(
         2001, 12, 31
@@ -165,7 +165,7 @@ def test_engine_playback_speed_variations():
 
     # Test 3: Speed = 0.5 days/second, tick 2 seconds = 1 day
     engine.seek(date(2000, 6, 15))
-    engine.set_playback_speed("days_per_second", 0.5)
+    engine.set_playback_speed("days/sec", 0.5)
     engine.tick(2.0)
     assert engine.get_current_date() == date(
         2000, 6, 16
@@ -173,7 +173,7 @@ def test_engine_playback_speed_variations():
 
     # Test 4: Speed = 10 days/second, tick 0.1 seconds = 1 day (fractional seconds)
     engine.seek(date(2000, 3, 1))
-    engine.set_playback_speed("days_per_second", 10.0)
+    engine.set_playback_speed("days/sec", 10.0)
     engine.tick(0.1)  # 0.1 * 10 = 1 day
     assert engine.get_current_date() == date(
         2000, 3, 2
@@ -181,7 +181,7 @@ def test_engine_playback_speed_variations():
 
     # Test 5: Standard leap-year mode with speed verification
     engine_std = TemporalEngine(campaign=camp, ignore_leap_years=False)
-    engine_std.set_playback_speed("days_per_second", 1.0)
+    engine_std.set_playback_speed("days/sec", 1.0)
     engine_std.seek(date(2000, 2, 28))
     engine_std.tick(1.0)
     assert engine_std.get_current_date() == date(
