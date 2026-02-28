@@ -1,6 +1,7 @@
 # chroniclemap/storage/campaign_store.py
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -36,6 +37,8 @@ except Exception:
 
 
 class CampaignStore:
+    GLOBAL_META_FILENAME = "global_metadata.json"
+
     def __init__(self, root: Path):
         self.root = Path(root)
         # ensure both root and root/Campaigns exist for compatibility
@@ -199,3 +202,31 @@ class CampaignStore:
         if p2.exists() and p2.is_dir():
             return p2
         return None
+
+    def load_global_metadata(self) -> Dict[str, Any]:
+        path = self.root / self.GLOBAL_META_FILENAME
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def save_global_metadata(self, metadata: Dict[str, Any]) -> None:
+        path = self.root / self.GLOBAL_META_FILENAME
+        payload = metadata if isinstance(metadata, dict) else {}
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def get_global_language(self, default: str = "en") -> str:
+        meta = self.load_global_metadata()
+        value = meta.get("language")
+        return str(value) if value else default
+
+    def set_global_language(self, locale: str) -> None:
+        meta = self.load_global_metadata()
+        meta["language"] = locale
+        self.save_global_metadata(meta)

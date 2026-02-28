@@ -1,5 +1,43 @@
 下面是两次对话历史的拼接
 【【【【【【【【【【【【【【【【【【【【【【
+
+项目回顾（到目前为止）
+
+已完成的核心能力
+
+核心模型与时间系统
+GameDate（支持广泛年份、无闰年模式）
+Campaign / Snapshot / Ruler / RankPeriod 等模型完善，含序列化反序列化
+TemporalEngine 支持播放、跳转、按滤镜取快照
+参考：models.py、engine.py
+存储与导入
+Campaign 建立、加载、保存
+导入截图写入 maps、生成 thumbnails、写 metadata
+OCR 识别日期（可选）已在导入链路打通
+新增截图删除：删 metadata + 删 maps/thumbnails 文件
+参考：manager.py、import_widget.py
+GUI 主流程
+Campaign 管理页、详情页、导入页、播放器页都可用
+播放页支持手动输入日期跳转
+右侧 campaign note 编辑并保存
+默认导入间隔即时保存
+参考：campaign_manager.py、campaign_detail.py、player_window.py
+帝王系统（已进入可用阶段）
+帝王创建/编辑/复制/删除
+生卒、在位、玩家扮演时期、rank periods 可编辑
+排序规则按玩家扮演开始时间（空值在前），操作后自动重排+保存
+肖像支持：本地选择、剪贴板粘贴、移除、替换
+肖像无引用自动清理（替换/删除头像/删 ruler）
+肖像边框颜色按最高 rank
+ruler timeline（不可拖动）已绘制：显示“谁在扮演 + rank 颜色段 + 当前时间竖线”
+参考：player_window.py
+质量状态
+测试持续通过，当前 36 passed
+当前阶段判断
+你现在已经不再是“架构草案”阶段，而是可运行的 GUI MVP + 叙事层初版。
+换句话说：主工作流可跑通，核心数据模型稳定，正在从“能用”走向“好用”。
+
+
 # 高层回顾（从需求到现在 — 摘要）
 
 你最初的需求（我已完整理解并记录）是做一个 *ChronicleMap（编年史地图）* 应用，用于保存并回放 Paradox 风格大地图随时间变化的截图（多滤镜、多存档、日精度时间轴、OCR 自动识别截图日期、图像对齐以减少抖动、叙事性元数据如帝王/谥号/传记等）。你希望：

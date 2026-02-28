@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 # use GameDate and FilterType from core.models
 from chroniclemap.core.models import FilterType, GameDate
 from chroniclemap.gui.snapshot_confirm import SnapshotConfirmDialog
+from chroniclemap.gui.texts import tr
 from chroniclemap.storage.manager import StorageManager
 
 
@@ -55,7 +56,8 @@ class ImportWidget(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        layout.addWidget(QLabel("Import Snapshot"))
+        self.title_label = QLabel(tr("import.title"))
+        layout.addWidget(self.title_label)
 
         # filter radio group: read from metadata (list of strings or FilterType)
         meta = self.store.load_metadata(campaign_name) or {}
@@ -70,7 +72,7 @@ class ImportWidget(QWidget):
             ]
 
         self.filter_group = QButtonGroup(self)
-        rg = QGroupBox("Filter")
+        self.filter_group_box = QGroupBox(tr("import.filter_group"))
         rg_layout = QHBoxLayout()
         self.filter_buttons = []
         for i, f in enumerate(meta_filters):
@@ -84,28 +86,30 @@ class ImportWidget(QWidget):
             rb.toggled.connect(
                 lambda checked, name=f: checked and self.filter_changed.emit(name)
             )
-        rg.setLayout(rg_layout)
-        layout.addWidget(rg)
+        self.filter_group_box.setLayout(rg_layout)
+        layout.addWidget(self.filter_group_box)
 
         # default interval
-        interval_box = QGroupBox("Default interval for next snapshot")
+        self.interval_box = QGroupBox(tr("import.default_interval"))
         ib_layout = QHBoxLayout()
         self.interval_spin = QSpinBox()
         self.interval_spin.setMinimum(1)
         self.interval_spin.setMaximum(100000)
         self.interval_spin.setValue(1)
         self.interval_unit = QComboBox()
-        self.interval_unit.addItems(["years", "months", "days"])
+        self.interval_unit.addItem(tr("unit.years"), "years")
+        self.interval_unit.addItem(tr("unit.months"), "months")
+        self.interval_unit.addItem(tr("unit.days"), "days")
         ib_layout.addWidget(self.interval_spin)
         ib_layout.addWidget(self.interval_unit)
-        interval_box.setLayout(ib_layout)
-        layout.addWidget(interval_box)
+        self.interval_box.setLayout(ib_layout)
+        layout.addWidget(self.interval_box)
 
         # import buttons
         btn_layout = QHBoxLayout()
-        self.file_btn = QPushButton("Choose File...")
-        self.batch_btn = QPushButton("Batch Import...")
-        self.paste_btn = QPushButton("Paste (Ctrl+V)")
+        self.file_btn = QPushButton(tr("import.choose_file"))
+        self.batch_btn = QPushButton(tr("import.batch_import"))
+        self.paste_btn = QPushButton(tr("import.paste"))
         btn_layout.addWidget(self.file_btn)
         btn_layout.addWidget(self.batch_btn)
         btn_layout.addWidget(self.paste_btn)
@@ -137,7 +141,10 @@ class ImportWidget(QWidget):
 
     def on_choose_file(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select image", str(Path.home()), "Images (*.png *.jpg *.jpeg *.bmp)"
+            self,
+            tr("import.select_image"),
+            str(Path.home()),
+            tr("common.images_filter"),
         )
         if path:
             self._handle_input_path(Path(path))
@@ -145,15 +152,17 @@ class ImportWidget(QWidget):
     def on_batch_import(self):
         paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Select images",
+            tr("import.select_images"),
             str(Path.home()),
-            "Images (*.png *.jpg *.jpeg *.bmp)",
+            tr("common.images_filter"),
         )
         if not paths:
             return
 
         total = len(paths)
-        progress = QProgressDialog("Importing snapshots...", "Cancel", 0, total, self)
+        progress = QProgressDialog(
+            tr("import.importing"), tr("common.cancel"), 0, total, self
+        )
         progress.setWindowModality(Qt.WindowModal)
         progress.setAutoClose(True)
         progress.setValue(0)
@@ -167,7 +176,7 @@ class ImportWidget(QWidget):
             progress.setValue(idx)
             QApplication.processEvents()
 
-        self.status_label.setText(f"Imported {imported} snapshots (batch)")
+        self.status_label.setText(tr("import.imported_batch", count=imported))
 
     def on_paste(self):
         clipboard = QGuiApplication.clipboard()
@@ -183,7 +192,7 @@ class ImportWidget(QWidget):
             pix.save(str(tmp), "PNG")
             self._handle_input_path(tmp)
         else:
-            self.status_label.setText("Clipboard has no image")
+            self.status_label.setText(tr("import.clipboard_empty"))
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -198,7 +207,7 @@ class ImportWidget(QWidget):
             self._handle_input_path(Path(path))
 
     def _handle_input_path(self, path: Path, *, confirm: bool = True) -> bool:
-        self.status_label.setText("Processing...")
+        self.status_label.setText(tr("import.processing"))
         ocr_date: Optional[str] = None
         predicted_date: Optional[str] = None
         detected_date: Optional[str] = None
@@ -221,7 +230,9 @@ class ImportWidget(QWidget):
         if last_date_iso:
             try:
                 num = int(self.interval_spin.value())
-                unit = self.interval_unit.currentText()
+                unit = (
+                    self.interval_unit.currentData() or self.interval_unit.currentText()
+                )
                 predicted_date = self._add_interval_iso(last_date_iso, num, unit)
             except Exception:
                 predicted_date = None
@@ -233,7 +244,7 @@ class ImportWidget(QWidget):
         try:
             campaign = self.storage.load_campaign(self.campaign_name)
         except FileNotFoundError:
-            self.status_label.setText("Campaign not found")
+            self.status_label.setText(tr("import.campaign_missing"))
             return
 
         # 交互导入：弹出确认对话框
@@ -283,7 +294,9 @@ class ImportWidget(QWidget):
                     )
 
                     # 更新UI状态
-                    self.status_label.setText(f"Imported snapshot {snap.date.to_iso()}")
+                    self.status_label.setText(
+                        tr("import.imported_single", date=snap.date.to_iso())
+                    )
                     # 通知上层界面：有新快照导入
                     try:
                         self.snapshot_added.emit(snap)
@@ -293,11 +306,11 @@ class ImportWidget(QWidget):
                     return True
 
                 except ValueError as ve:  # 处理枚举/缺字段错误
-                    self.status_label.setText(f"Invalid data: {str(ve)}")
+                    self.status_label.setText(tr("import.invalid_data", err=str(ve)))
                 except Exception as e:
-                    self.status_label.setText(f"Import failed: {e}")
+                    self.status_label.setText(tr("import.failed", err=str(e)))
             else:
-                self.status_label.setText("Import cancelled")
+                self.status_label.setText(tr("import.cancelled"))
             return False
 
         # 批量导入：不弹出对话框，直接使用当前单选框滤镜和自动/预测日期
@@ -312,14 +325,16 @@ class ImportWidget(QWidget):
                 ocr_provider=self.ocr,
                 create_dirs_if_missing=True,
             )
-            self.status_label.setText(f"Imported snapshot {snap.date.to_iso()}")
+            self.status_label.setText(
+                tr("import.imported_single", date=snap.date.to_iso())
+            )
             try:
                 self.snapshot_added.emit(snap)
             except Exception:
                 pass
             return True
         except Exception as e:
-            self.status_label.setText(f"Batch import failed: {e}")
+            self.status_label.setText(tr("import.batch_failed", err=str(e)))
             return False
 
     def _get_last_snapshot_date(self, filter_name: str) -> Optional[str]:
@@ -393,7 +408,9 @@ class ImportWidget(QWidget):
         self.interval_unit.blockSignals(True)
         self.interval_spin.setValue(max(1, value))
         if unit in ["years", "months", "days"]:
-            self.interval_unit.setCurrentText(unit)
+            idx = self.interval_unit.findData(unit)
+            if idx >= 0:
+                self.interval_unit.setCurrentIndex(idx)
         self.interval_spin.blockSignals(False)
         self.interval_unit.blockSignals(False)
 
@@ -404,7 +421,7 @@ class ImportWidget(QWidget):
             return
 
         value = int(self.interval_spin.value())
-        unit = self.interval_unit.currentText()
+        unit = self.interval_unit.currentData() or self.interval_unit.currentText()
         days = value
         if unit == "years":
             days = value * 365
@@ -416,3 +433,18 @@ class ImportWidget(QWidget):
             campaign.meta = {}
         campaign.meta["upload_interval"] = {"value": value, "unit": unit}
         self.storage.save_campaign(campaign)
+
+    def retranslate_ui(self) -> None:
+        self.title_label.setText(tr("import.title"))
+        self.filter_group_box.setTitle(tr("import.filter_group"))
+        self.interval_box.setTitle(tr("import.default_interval"))
+        cur_unit = self.interval_unit.currentData() or "years"
+        self.interval_unit.setItemText(0, tr("unit.years"))
+        self.interval_unit.setItemText(1, tr("unit.months"))
+        self.interval_unit.setItemText(2, tr("unit.days"))
+        idx = self.interval_unit.findData(cur_unit)
+        if idx >= 0:
+            self.interval_unit.setCurrentIndex(idx)
+        self.file_btn.setText(tr("import.choose_file"))
+        self.batch_btn.setText(tr("import.batch_import"))
+        self.paste_btn.setText(tr("import.paste"))

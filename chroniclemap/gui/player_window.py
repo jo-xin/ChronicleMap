@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
+from PySide6.QtGui import QAction, QColor, QGuiApplication, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenuBar,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -39,6 +40,7 @@ from chroniclemap.core.models import (
     Ruler,
     new_ruler,
 )
+from chroniclemap.gui.texts import tr
 from chroniclemap.storage.manager import StorageManager
 from chroniclemap.temporal.engine import TemporalEngine
 
@@ -205,7 +207,7 @@ class RulerTimelineWidget(QWidget):
             or self._ord_min >= self._ord_max
         ):
             p.setPen(QColor("#d0d0d0"))
-            p.drawText(rect, Qt.AlignCenter, "Ruler timeline unavailable")
+            p.drawText(rect, Qt.AlignCenter, tr("player.ruler_tl_empty"))
             p.end()
             return
 
@@ -264,7 +266,7 @@ class RulerEditorDialog(QDialog):
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Edit ruler")
+        self.setWindowTitle(tr("ruler_editor.title"))
         self.resize(760, 600)
         self._ruler = ruler
         self._campaign_path = Path(campaign_path) if campaign_path else None
@@ -307,22 +309,22 @@ class RulerEditorDialog(QDialog):
             self.player_start_date_edit,
             self.player_end_date_edit,
         ]:
-            w.setPlaceholderText("YYYY-MM-DD (empty allowed)")
+            w.setPlaceholderText(tr("ruler_editor.date_placeholder"))
 
-        form.addRow("Full name:", self.full_name_edit)
-        form.addRow("Display name:", self.display_name_edit)
-        form.addRow("Epithet:", self.epithet_edit)
-        form.addRow("Birth date:", self.birth_date_edit)
-        form.addRow("Death date:", self.death_date_edit)
-        form.addRow("Reign start:", self.start_date_edit)
-        form.addRow("Reign end:", self.end_date_edit)
-        form.addRow("Player start:", self.player_start_date_edit)
-        form.addRow("Player end:", self.player_end_date_edit)
+        form.addRow(tr("ruler_editor.full_name"), self.full_name_edit)
+        form.addRow(tr("ruler_editor.display_name"), self.display_name_edit)
+        form.addRow(tr("ruler_editor.epithet"), self.epithet_edit)
+        form.addRow(tr("ruler_editor.birth_date"), self.birth_date_edit)
+        form.addRow(tr("ruler_editor.death_date"), self.death_date_edit)
+        form.addRow(tr("ruler_editor.reign_start"), self.start_date_edit)
+        form.addRow(tr("ruler_editor.reign_end"), self.end_date_edit)
+        form.addRow(tr("ruler_editor.player_start"), self.player_start_date_edit)
+        form.addRow(tr("ruler_editor.player_end"), self.player_end_date_edit)
         self.portrait_status = QLabel("")
         portrait_btn_row = QHBoxLayout()
-        self.portrait_file_btn = QPushButton("Choose portrait...")
-        self.portrait_paste_btn = QPushButton("Paste portrait")
-        self.portrait_remove_btn = QPushButton("Remove portrait")
+        self.portrait_file_btn = QPushButton(tr("ruler_editor.portrait_choose"))
+        self.portrait_paste_btn = QPushButton(tr("ruler_editor.portrait_paste"))
+        self.portrait_remove_btn = QPushButton(tr("ruler_editor.portrait_remove"))
         portrait_btn_row.addWidget(self.portrait_file_btn)
         portrait_btn_row.addWidget(self.portrait_paste_btn)
         portrait_btn_row.addWidget(self.portrait_remove_btn)
@@ -330,13 +332,13 @@ class RulerEditorDialog(QDialog):
         self.portrait_preview.setAlignment(Qt.AlignCenter)
         self.portrait_preview.setFixedSize(110, 130)
         self.portrait_preview.setStyleSheet("border: 1px solid #999;")
-        form.addRow("Portrait:", self.portrait_status)
+        form.addRow(tr("ruler_editor.portrait"), self.portrait_status)
         form.addRow("", portrait_btn_row)
         form.addRow("", self.portrait_preview)
-        form.addRow("Notes:", self.notes_edit)
+        form.addRow(tr("ruler_editor.notes"), self.notes_edit)
         root.addLayout(form)
 
-        rank_group = QGroupBox("Rank periods")
+        rank_group = QGroupBox(tr("ruler_editor.rank_periods"))
         rank_layout = QVBoxLayout(rank_group)
         self.rank_table = QTableWidget(0, 4)
         self.rank_table.setHorizontalHeaderLabels(
@@ -348,8 +350,8 @@ class RulerEditorDialog(QDialog):
         rank_layout.addWidget(self.rank_table)
 
         rank_btns = QHBoxLayout()
-        self.rank_add_btn = QPushButton("Add row")
-        self.rank_del_btn = QPushButton("Delete row")
+        self.rank_add_btn = QPushButton(tr("ruler_editor.rank_add_row"))
+        self.rank_del_btn = QPushButton(tr("ruler_editor.rank_delete_row"))
         rank_btns.addWidget(self.rank_add_btn)
         rank_btns.addWidget(self.rank_del_btn)
         rank_btns.addStretch()
@@ -416,20 +418,20 @@ class RulerEditorDialog(QDialog):
     def _refresh_portrait_preview(self) -> None:
         pix = None
         if self._remove_portrait:
-            self.portrait_status.setText("Portrait will be removed")
+            self.portrait_status.setText(tr("ruler_editor.portrait_will_remove"))
         elif self._portrait_source_path and self._portrait_source_path.exists():
             pix = QPixmap(str(self._portrait_source_path))
             self.portrait_status.setText(self._portrait_source_path.name)
         elif self._portrait_from_clipboard is not None:
             pix = QPixmap.fromImage(self._portrait_from_clipboard)
-            self.portrait_status.setText("From clipboard")
+            self.portrait_status.setText(tr("ruler_editor.portrait_from_clipboard"))
         else:
             current = self._resolve_portrait_path()
             if current and current.exists():
                 pix = QPixmap(str(current))
                 self.portrait_status.setText(str(current.name))
             else:
-                self.portrait_status.setText("No portrait")
+                self.portrait_status.setText(tr("ruler_editor.portrait_none"))
 
         if pix and not pix.isNull():
             self.portrait_preview.setText("")
@@ -442,14 +444,14 @@ class RulerEditorDialog(QDialog):
             )
         else:
             self.portrait_preview.setPixmap(QPixmap())
-            self.portrait_preview.setText("No image")
+            self.portrait_preview.setText(tr("ruler_editor.no_image"))
 
     def _on_choose_portrait(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Choose portrait",
+            tr("ruler_editor.portrait_choose"),
             str(Path.home()),
-            "Images (*.png *.jpg *.jpeg *.bmp *.webp)",
+            tr("common.images_filter_ext"),
         )
         if not path:
             return
@@ -462,7 +464,11 @@ class RulerEditorDialog(QDialog):
         clipboard = QGuiApplication.clipboard()
         image = clipboard.image()
         if image.isNull():
-            QMessageBox.information(self, "Clipboard", "Clipboard has no image.")
+            QMessageBox.information(
+                self,
+                tr("snapshot_confirm.clipboard_title"),
+                tr("snapshot_confirm.clipboard_no_image"),
+            )
             return
         self._remove_portrait = False
         self._portrait_from_clipboard = image
@@ -557,7 +563,7 @@ class RulerEditorDialog(QDialog):
             self._ruler.rank_periods = rank_periods
             self._persist_portrait_if_needed()
         except Exception as exc:
-            QMessageBox.warning(self, "Invalid input", str(exc))
+            QMessageBox.warning(self, tr("ruler_editor.invalid_input"), str(exc))
             return
 
         self.accept()
@@ -578,25 +584,31 @@ class PlayerWindow(QWidget):
         self._ruler_index = 0
         self._sort_rulers()
 
-        self.setWindowTitle(f"ChronicleMap - Player - {campaign_name}")
+        self.setWindowTitle(
+            tr("player.title", app=tr("app.name"), campaign=campaign_name)
+        )
         self.resize(1280, 820)
 
-        root = QHBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.menu_bar = QMenuBar(self)
+        outer.addWidget(self.menu_bar)
+        root = QHBoxLayout()
+        outer.addLayout(root, 1)
         root.setSpacing(10)
 
         left = QVBoxLayout()
         left.setSpacing(8)
         root.addLayout(left, 0)
 
-        playback_group = QGroupBox("Playback")
+        playback_group = QGroupBox(tr("player.playback"))
         playback_group.setMaximumWidth(320)
         playback_layout = QVBoxLayout(playback_group)
 
         controls_row = QGridLayout()
-        self.play_btn = QPushButton("Play")
-        self.pause_btn = QPushButton("Pause")
-        self.prev_btn = QPushButton("Prev snapshot")
-        self.next_btn = QPushButton("Next snapshot")
+        self.play_btn = QPushButton(tr("player.play"))
+        self.pause_btn = QPushButton(tr("player.pause"))
+        self.prev_btn = QPushButton(tr("player.prev_snapshot"))
+        self.next_btn = QPushButton(tr("player.next_snapshot"))
         controls_row.addWidget(self.play_btn, 0, 0)
         controls_row.addWidget(self.pause_btn, 0, 1)
         controls_row.addWidget(self.prev_btn, 1, 0)
@@ -609,7 +621,7 @@ class PlayerWindow(QWidget):
         self.speed_spin.setRange(0.01, 10000.0)
         self.speed_unit = QComboBox()
         self.speed_unit.addItems(["days/sec", "months/sec", "years/sec"])
-        speed_row.addWidget(QLabel("Speed:"))
+        speed_row.addWidget(QLabel(tr("player.speed")))
         speed_row.addWidget(self.speed_spin)
         speed_row.addWidget(self.speed_unit)
         playback_layout.addLayout(speed_row)
@@ -621,7 +633,7 @@ class PlayerWindow(QWidget):
         if unit in ["days/sec", "months/sec", "years/sec"]:
             self.speed_unit.setCurrentText(unit)
 
-        self.ruler_group = QGroupBox("Ruler profile")
+        self.ruler_group = QGroupBox(tr("player.ruler_profile"))
         self.ruler_group.setMaximumWidth(320)
         ruler_layout = QVBoxLayout(self.ruler_group)
         nav = QHBoxLayout()
@@ -633,7 +645,7 @@ class PlayerWindow(QWidget):
         nav.addWidget(self.ruler_next_btn)
         ruler_layout.addLayout(nav)
 
-        self.ruler_portrait = QLabel("Portrait\n(placeholder)")
+        self.ruler_portrait = QLabel(tr("player.portrait_placeholder"))
         self.ruler_portrait.setAlignment(Qt.AlignCenter)
         self.ruler_portrait.setMinimumHeight(140)
         self.ruler_portrait.setMaximumHeight(360)
@@ -650,15 +662,15 @@ class PlayerWindow(QWidget):
         ruler_layout.addWidget(self.ruler_summary)
 
         edit_row = QHBoxLayout()
-        self.edit_ruler_btn = QPushButton("Edit")
-        self.create_ruler_btn = QPushButton("Create")
+        self.edit_ruler_btn = QPushButton(tr("player.edit"))
+        self.create_ruler_btn = QPushButton(tr("player.create"))
         edit_row.addWidget(self.edit_ruler_btn)
         edit_row.addWidget(self.create_ruler_btn)
         ruler_layout.addLayout(edit_row)
 
         ops_row = QHBoxLayout()
-        self.delete_ruler_btn = QPushButton("Delete")
-        self.copy_ruler_btn = QPushButton("Copy")
+        self.delete_ruler_btn = QPushButton(tr("player.delete"))
+        self.copy_ruler_btn = QPushButton(tr("player.copy"))
         ops_row.addWidget(self.delete_ruler_btn)
         ops_row.addWidget(self.copy_ruler_btn)
         ruler_layout.addLayout(ops_row)
@@ -668,7 +680,7 @@ class PlayerWindow(QWidget):
         center = QVBoxLayout()
         root.addLayout(center, 1)
 
-        self.image_label = QLabel("No snapshots yet")
+        self.image_label = QLabel(tr("player.no_snapshots"))
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(640, 360)
         center.addWidget(self.image_label, 5)
@@ -678,7 +690,7 @@ class PlayerWindow(QWidget):
         self.timeline_slider.setMaximum(0)
         self.timeline_slider.setSingleStep(1)
         self.timeline_slider.setPageStep(10)
-        self.timeline_label = QLabel("Timeline")
+        self.timeline_label = QLabel(tr("player.timeline"))
         center.addWidget(self.timeline_slider)
         center.addWidget(self.timeline_label)
 
@@ -686,14 +698,14 @@ class PlayerWindow(QWidget):
         self.current_date_edit = QLineEdit()
         self.current_date_edit.setPlaceholderText("YYYY-MM-DD")
         self.current_date_edit.setClearButtonEnabled(True)
-        self.current_date_jump_btn = QPushButton("Jump")
-        date_jump_row.addWidget(QLabel("Current date:"))
+        self.current_date_jump_btn = QPushButton(tr("player.jump"))
+        date_jump_row.addWidget(QLabel(tr("player.current_date")))
         date_jump_row.addWidget(self.current_date_edit)
         date_jump_row.addWidget(self.current_date_jump_btn)
         center.addLayout(date_jump_row)
 
         self.ruler_timeline = RulerTimelineWidget()
-        center.addWidget(QLabel("Ruler timeline"))
+        center.addWidget(QLabel(tr("player.ruler_timeline")))
         center.addWidget(self.ruler_timeline)
 
         right = QVBoxLayout()
@@ -702,7 +714,7 @@ class PlayerWindow(QWidget):
 
         self.filter_combo = QComboBox()
         self.filter_combo.addItems([f.value for f in FilterType])
-        right.addWidget(QLabel("Filter:"))
+        right.addWidget(QLabel(tr("common.filter")))
         right.addWidget(self.filter_combo)
 
         self.current_snapshot_label = QLabel("")
@@ -713,20 +725,22 @@ class PlayerWindow(QWidget):
         self.current_snapshot_label.setStyleSheet(
             "border: 1px solid #ccc; border-radius: 3px; padding: 4px;"
         )
-        right.addWidget(QLabel("Current snapshot:"))
+        right.addWidget(QLabel(tr("player.snapshot_current")))
         right.addWidget(self.current_snapshot_label)
 
-        note_group = QGroupBox("Campaign note")
+        note_group = QGroupBox(tr("player.campaign_note"))
         note_layout = QVBoxLayout(note_group)
         self.note_edit = QTextEdit(self.campaign.notes or "")
         self.note_edit.setMinimumHeight(120)
         self.note_edit.setMaximumHeight(220)
-        self.note_edit.setPlaceholderText("Write campaign note here...")
-        self.save_note_btn = QPushButton("Save note")
+        self.note_edit.setPlaceholderText(tr("player.note_placeholder"))
+        self.save_note_btn = QPushButton(tr("player.note_save"))
         note_layout.addWidget(self.note_edit)
         note_layout.addWidget(self.save_note_btn)
         right.addWidget(note_group)
         right.addStretch()
+
+        self._setup_menus()
 
         self._timer = QTimer(self)
         self._timer.setInterval(40)
@@ -759,10 +773,45 @@ class PlayerWindow(QWidget):
         self._update_frame()
         self._refresh_ruler_card()
 
+    def _setup_menus(self) -> None:
+        tools_menu = self.menu_bar.addMenu(tr("menu.tools"))
+        export_menu = tools_menu.addMenu(tr("menu.export"))
+
+        self.action_export_mp4 = QAction(tr("menu.export.mp4"), self)
+        self.action_export_mp4.setEnabled(False)
+        self.action_export_gif = QAction(tr("menu.export.gif"), self)
+        self.action_export_gif.setEnabled(False)
+        export_menu.addAction(self.action_export_mp4)
+        export_menu.addAction(self.action_export_gif)
+
+        toys_menu = tools_menu.addMenu(tr("menu.toys"))
+        self.action_toy_timewarp = QAction(tr("menu.toys.timewarp"), self)
+        self.action_toy_timewarp.triggered.connect(
+            lambda: QMessageBox.information(
+                self, tr("menu.toys"), tr("menu.toys.message")
+            )
+        )
+        toys_menu.addAction(self.action_toy_timewarp)
+
+        campaign_menu = self.menu_bar.addMenu(tr("menu.campaign"))
+        self.action_open_campaign_folder = QAction(
+            tr("menu.campaign.open_folder"), self
+        )
+        self.action_open_campaign_folder.triggered.connect(self._open_campaign_folder)
+        campaign_menu.addAction(self.action_open_campaign_folder)
+
+    def _open_campaign_folder(self) -> None:
+        if not self.campaign.path:
+            return
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(self.campaign.path))
+
     def _init_timeline_range(self) -> None:
         if not self.campaign.snapshots:
             self.timeline_slider.setEnabled(False)
-            self.timeline_label.setText("Timeline: (no snapshots)")
+            self.timeline_label.setText(tr("player.timeline_empty"))
             self.ruler_timeline.set_range(None, None)
             self.ruler_timeline.set_rulers(self.campaign.rulers)
             return
@@ -875,7 +924,7 @@ class PlayerWindow(QWidget):
     def _set_portrait_filled(self, pixmap: Optional[QPixmap]) -> None:
         if pixmap is None or pixmap.isNull():
             self.ruler_portrait.setPixmap(QPixmap())
-            self.ruler_portrait.setText("Portrait\n(placeholder)")
+            self.ruler_portrait.setText(tr("player.portrait_placeholder"))
             self.ruler_portrait.setMinimumHeight(140)
             return
         available_w = max(1, self.ruler_group.width() - 24)
@@ -910,7 +959,7 @@ class PlayerWindow(QWidget):
             result = result[:max_chars].rstrip()
             clipped = True
         if clipped and result:
-            result += " ... (see edit page for full note)"
+            result += tr("player.ruler_note_more")
         return result
 
     def _display_name_line(self, ruler: Ruler) -> str:
@@ -996,8 +1045,8 @@ class PlayerWindow(QWidget):
         old_portrait_path = ruler.portrait_path
         reply = QMessageBox.question(
             self,
-            "Delete ruler",
-            "Delete current ruler?",
+            tr("player.delete_ruler_title"),
+            tr("player.delete_ruler_body"),
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
@@ -1024,7 +1073,7 @@ class PlayerWindow(QWidget):
         total = len(self.campaign.rulers)
         if ruler is None:
             self.ruler_index_label.setText("0 / 0")
-            self.ruler_summary.setText("No ruler data in this campaign.")
+            self.ruler_summary.setText(tr("player.ruler_none"))
             self.edit_ruler_btn.setEnabled(True)
             self.create_ruler_btn.setEnabled(True)
             self.ruler_prev_btn.setEnabled(False)
@@ -1065,9 +1114,21 @@ class PlayerWindow(QWidget):
         lines = [
             self._display_name_line(ruler),
             ruler.full_name or "-",
-            f"Life: {_fmt_date(ruler.birth_date)} ~ {_fmt_date(ruler.death_date)}",
-            f"Reign: {_fmt_date(ruler.start_date)} ~ {_fmt_date(ruler.end_date)}",
-            f"Player: {_fmt_date(ruler.player_start_date)} ~ {_fmt_date(ruler.player_end_date)}",
+            tr(
+                "player.ruler_life",
+                start=_fmt_date(ruler.birth_date),
+                end=_fmt_date(ruler.death_date),
+            ),
+            tr(
+                "player.ruler_reign",
+                start=_fmt_date(ruler.start_date),
+                end=_fmt_date(ruler.end_date),
+            ),
+            tr(
+                "player.ruler_player",
+                start=_fmt_date(ruler.player_start_date),
+                end=_fmt_date(ruler.player_end_date),
+            ),
         ]
         if ruler.notes:
             note_short = self._truncate_note(ruler.notes)
@@ -1105,14 +1166,16 @@ class PlayerWindow(QWidget):
                 )
                 self.image_label.setPixmap(pix)
             else:
-                self.image_label.setText("Image not available")
+                self.image_label.setText(tr("player.image_na"))
         else:
-            self.current_snapshot_label.setText("(no snapshot for this date)")
-            self.image_label.setText("No snapshot for current date")
+            self.current_snapshot_label.setText(tr("player.snapshot_na"))
+            self.image_label.setText(tr("player.no_snapshot_date"))
 
     def _update_timeline_label(self) -> None:
         if not hasattr(self, "_ord_min") or not hasattr(self, "_ord_max"):
             return
         d_min = GameDate.from_ordinal(self._ord_min, ignore_leap=False)
         d_max = GameDate.from_ordinal(self._ord_max, ignore_leap=False)
-        self.timeline_label.setText(f"Timeline: {d_min.to_iso()} - {d_max.to_iso()}")
+        self.timeline_label.setText(
+            tr("player.timeline_range", dmin=d_min.to_iso(), dmax=d_max.to_iso())
+        )

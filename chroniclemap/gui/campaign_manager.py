@@ -1,15 +1,17 @@
-# chroniclemap/gui/campaign_manager.py
 from __future__ import annotations
 
 from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QListWidget,
+    QMenuBar,
     QMessageBox,
     QPushButton,
     QTextEdit,
@@ -18,18 +20,19 @@ from PySide6.QtWidgets import (
 )
 
 from chroniclemap.gui.campaign_detail import CampaignDetailWindow
-from chroniclemap.gui.campaign_store import CampaignStore  # use the adapter above
+from chroniclemap.gui.campaign_store import CampaignStore
+from chroniclemap.gui.texts import get_locale, set_locale, tr
 
 
 class NoteEditorDialog(QDialog):
     def __init__(self, parent: Optional[QWidget], initial_text: str = ""):
         super().__init__(parent)
-        self.setWindowTitle("Edit Note")
+        self.setWindowTitle(tr("dlg.note_edit.title"))
         self.resize(600, 400)
         self.text = QTextEdit(self)
         self.text.setPlainText(initial_text)
-        self.save_btn = QPushButton("Save", self)
-        self.cancel_btn = QPushButton("Cancel", self)
+        self.save_btn = QPushButton(tr("common.save"), self)
+        self.cancel_btn = QPushButton(tr("common.cancel"), self)
 
         layout = QVBoxLayout()
         layout.addWidget(self.text)
@@ -51,25 +54,30 @@ class CampaignManagerView(QWidget):
     def __init__(self, store: CampaignStore):
         super().__init__()
         self.store = store
-        self.setWindowTitle("ChronicleMap — Campaign Manager")
+        set_locale(self.store.get_global_language(default=get_locale()))
+        self.setWindowTitle(tr("campaign_manager.title", app=tr("app.name")))
         self.resize(900, 600)
-
-        # 保持对已打开详情窗口的引用，避免被垃圾回收
         self._detail_windows: list[CampaignDetailWindow] = []
 
         self.layout = QVBoxLayout(self)
+        self.menu_bar = QMenuBar(self)
+        self.layout.setMenuBar(self.menu_bar)
+        self.settings_menu = self.menu_bar.addMenu("")
+        self.language_menu = self.settings_menu.addMenu("")
+        self.action_lang_en = QAction(self)
+        self.action_lang_zh = QAction(self)
+        self.language_menu.addAction(self.action_lang_en)
+        self.language_menu.addAction(self.action_lang_zh)
 
-        # list
         self.list_widget = QListWidget()
         self.layout.addWidget(self.list_widget)
 
-        # buttons
         btn_layout = QHBoxLayout()
-        self.new_btn = QPushButton("New")
-        self.open_btn = QPushButton("Open")
-        self.delete_btn = QPushButton("Delete")
-        self.rename_btn = QPushButton("Rename")
-        self.note_btn = QPushButton("Edit Note")
+        self.new_btn = QPushButton(tr("campaign_manager.new"))
+        self.open_btn = QPushButton(tr("campaign_manager.open"))
+        self.delete_btn = QPushButton(tr("campaign_manager.delete"))
+        self.rename_btn = QPushButton(tr("campaign_manager.rename"))
+        self.note_btn = QPushButton(tr("campaign_manager.edit_note"))
         btn_layout.addWidget(self.new_btn)
         btn_layout.addWidget(self.open_btn)
         btn_layout.addWidget(self.delete_btn)
@@ -77,17 +85,18 @@ class CampaignManagerView(QWidget):
         btn_layout.addWidget(self.note_btn)
         self.layout.addLayout(btn_layout)
 
-        # status
         self.status = QLabel("")
         self.layout.addWidget(self.status)
 
-        # wire up
         self.new_btn.clicked.connect(self.on_new)
         self.delete_btn.clicked.connect(self.on_delete)
         self.rename_btn.clicked.connect(self.on_rename)
         self.note_btn.clicked.connect(self.on_edit_note)
         self.open_btn.clicked.connect(self.on_open)
+        self.action_lang_en.triggered.connect(lambda: self._apply_language("en"))
+        self.action_lang_zh.triggered.connect(lambda: self._apply_language("zh_CN"))
 
+        self.retranslate_ui()
         self.refresh_list()
 
     def refresh_list(self):
@@ -112,21 +121,23 @@ class CampaignManagerView(QWidget):
         nm = self.selected_name()
         if not nm:
             QMessageBox.information(
-                self, "Select Campaign", "Please select a campaign first."
+                self, tr("dlg.campaign_select.title"), tr("dlg.campaign_select.body")
             )
             return None
         return nm
 
     def on_new(self):
-        name, ok = QInputDialog.getText(self, "New Campaign", "Campaign name:")
+        name, ok = QInputDialog.getText(
+            self, tr("dlg.new_campaign.title"), tr("dlg.new_campaign.name")
+        )
         if not ok or not name.strip():
             return
         try:
-            _camp = self.store.create_campaign(name.strip())
-            self.status.setText(f"Created campaign '{name.strip()}'")
+            self.store.create_campaign(name.strip())
+            self.status.setText(tr("status.campaign_created", name=name.strip()))
             self.refresh_list()
         except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+            QMessageBox.critical(self, tr("common.error"), str(e))
 
     def on_delete(self):
         nm = self.ensure_selection()
@@ -134,31 +145,36 @@ class CampaignManagerView(QWidget):
             return
         reply = QMessageBox.question(
             self,
-            "Delete",
-            f"Delete campaign '{nm}'? This cannot be undone.",
+            tr("dlg.delete_campaign.title"),
+            tr("dlg.delete_campaign.body", name=nm),
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
             try:
                 self.store.delete_campaign(nm)
-                self.status.setText(f"Deleted campaign '{nm}'")
+                self.status.setText(tr("status.campaign_deleted", name=nm))
                 self.refresh_list()
             except Exception as e:
-                QMessageBox.critical(self, "Error", str(e))
+                QMessageBox.critical(self, tr("common.error"), str(e))
 
     def on_rename(self):
         nm = self.ensure_selection()
         if not nm:
             return
-        new, ok = QInputDialog.getText(self, "Rename Campaign", "New name:", text=nm)
+        new, ok = QInputDialog.getText(
+            self,
+            tr("dlg.rename_campaign.title"),
+            tr("dlg.rename_campaign.name"),
+            text=nm,
+        )
         if not ok or not new.strip():
             return
         try:
             self.store.rename_campaign(nm, new.strip())
-            self.status.setText(f"Renamed '{nm}' -> '{new.strip()}'")
+            self.status.setText(tr("status.campaign_renamed", old=nm, new=new.strip()))
             self.refresh_list()
         except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+            QMessageBox.critical(self, tr("common.error"), str(e))
 
     def on_edit_note(self):
         nm = self.ensure_selection()
@@ -169,23 +185,48 @@ class CampaignManagerView(QWidget):
         dlg = NoteEditorDialog(self, initial_text=initial)
         if dlg.exec() == QDialog.Accepted:
             txt = dlg.get_text()
-            # save under 'notes' key to be compatible with Campaign.to_dict
             meta["notes"] = txt
             self.store.save_metadata(nm, meta)
-            self.status.setText(f"Saved note for '{nm}'")
+            self.status.setText(tr("status.note_saved", name=nm))
 
     def on_open(self):
         nm = self.ensure_selection()
         if not nm:
             return
-        # 打开活动详情/导入窗口
         detail = CampaignDetailWindow(nm, self.store)
         detail.show()
         self._detail_windows.append(detail)
 
-        # 当窗口销毁时，从列表中移除引用
         def _on_destroyed(_obj=None, win=detail):
             if win in self._detail_windows:
                 self._detail_windows.remove(win)
 
         detail.destroyed.connect(_on_destroyed)
+
+    def retranslate_ui(self):
+        self.setWindowTitle(tr("campaign_manager.title", app=tr("app.name")))
+        self.new_btn.setText(tr("campaign_manager.new"))
+        self.open_btn.setText(tr("campaign_manager.open"))
+        self.delete_btn.setText(tr("campaign_manager.delete"))
+        self.rename_btn.setText(tr("campaign_manager.rename"))
+        self.note_btn.setText(tr("campaign_manager.edit_note"))
+        self.settings_menu.setTitle(tr("settings.menu"))
+        self.language_menu.setTitle(tr("settings.language"))
+        self.action_lang_en.setText(tr("settings.language.en"))
+        self.action_lang_zh.setText(tr("settings.language.zh_CN"))
+
+    def _apply_language(self, locale: str):
+        resolved = set_locale(locale)
+        self.store.set_global_language(resolved)
+        self.retranslate_ui()
+        for win in QApplication.topLevelWidgets():
+            try:
+                if hasattr(win, "retranslate_ui"):
+                    win.retranslate_ui()
+            except Exception:
+                pass
+        QMessageBox.information(
+            self,
+            tr("settings.language.applied_title"),
+            tr("settings.language.applied_body"),
+        )
