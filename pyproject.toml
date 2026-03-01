@@ -1,6 +1,6 @@
 [project]
 name = "chroniclemap"
-version = "0.0.0"
+version = "0.1.0"
 description = "ChronicleMap: historical map replayer"
 readme = "README.md"
 requires-python = ">=3.10,<3.12"
