@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: python -m pip install --upgrade pip && pip install poetry
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-ansi
+
+      - name: Install PyInstaller
+        run: poetry run pip install pyinstaller
+
+      - name: Resolve release version from tag
+        run: |
+          "VERSION=$($env:GITHUB_REF_NAME.TrimStart('v'))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Validate version matches tag
+        run: |
+          @'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          tag_version = sys.argv[1]
+          pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          project_version = pyproject.get("project", {}).get("version")
+          if not project_version:
+            raise SystemExit("Missing [project].version in pyproject.toml")
+
+          init_text = pathlib.Path("chroniclemap/__init__.py").read_text(encoding="utf-8")
+          m = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
+          if not m:
+            raise SystemExit("Missing __version__ in chroniclemap/__init__.py")
+          init_version = m.group(1)
+
+          if tag_version != project_version or tag_version != init_version:
+            raise SystemExit(
+              f"Version mismatch: tag={tag_version}, pyproject={project_version}, __init__={init_version}"
+            )
+          print(f"Version OK: {tag_version}")
+          '@ | python - "${env:VERSION}"
+
+      - name: Build Windows executable
+        run: |
+          poetry run pyinstaller `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onefile `
+            --name ChronicleMap `
+            --icon assets/icons/chroniclemap.ico `
+            --collect-data chroniclemap `
+            chroniclemap/gui/__main__.py
+
+      - name: Prepare release asset
+        run: |
+          $asset = "ChronicleMap-v$env:VERSION-windows-x64.exe"
+          Copy-Item "dist/ChronicleMap.exe" "dist/$asset" -Force
+          "RELEASE_ASSET=dist/$asset" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChronicleMap-windows-exe
+          path: ${{ env.RELEASE_ASSET }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.RELEASE_ASSET }}
+          generate_release_notes: true
