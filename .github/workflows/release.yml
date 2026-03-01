@@ -60,7 +60,7 @@ jobs:
           print(f"Version OK: {tag_version}")
           '@ | python - "${env:VERSION}"
 
-      - name: Build Windows executable
+      - name: Build onefile executable
         run: |
           poetry run python -m PyInstaller `
             --noconfirm `
@@ -68,26 +68,57 @@ jobs:
             --windowed `
             --onefile `
             --name ChronicleMap `
+            --distpath dist_onefile `
+            --workpath build_onefile `
             --icon assets/icons/chroniclemap.ico `
-            --collect-all PySide6 `
-            --collect-submodules PySide6 `
-            --collect-data chroniclemap `
+            --hidden-import PySide6.QtCore `
+            --hidden-import PySide6.QtGui `
+            --hidden-import PySide6.QtWidgets `
+            --add-data "chroniclemap/gui/locales;chroniclemap/gui/locales" `
             chroniclemap/gui/__main__.py
 
-      - name: Prepare release asset
+      - name: Build onedir package
         run: |
-          $asset = "ChronicleMap-v$env:VERSION-windows-x64.exe"
-          Copy-Item "dist/ChronicleMap.exe" "dist/$asset" -Force
-          "RELEASE_ASSET=dist/$asset" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          poetry run python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onedir `
+            --name ChronicleMap `
+            --distpath dist_onedir `
+            --workpath build_onedir `
+            --icon assets/icons/chroniclemap.ico `
+            --hidden-import PySide6.QtCore `
+            --hidden-import PySide6.QtGui `
+            --hidden-import PySide6.QtWidgets `
+            --add-data "chroniclemap/gui/locales;chroniclemap/gui/locales" `
+            chroniclemap/gui/__main__.py
 
-      - name: Upload workflow artifact
+      - name: Prepare release assets
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $onefile = "ChronicleMap-v$env:VERSION-windows-x64-onefile.exe"
+          Copy-Item "dist_onefile/ChronicleMap.exe" "dist/$onefile" -Force
+
+          $zipName = "ChronicleMap-v$env:VERSION-windows-x64-onedir.zip"
+          if (Test-Path "dist/$zipName") { Remove-Item "dist/$zipName" -Force }
+          Compress-Archive -Path "dist_onedir/ChronicleMap/*" -DestinationPath "dist/$zipName"
+
+          "RELEASE_ASSET_ONEFILE=dist/$onefile" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_ASSET_ONEDIR=dist/$zipName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ChronicleMap-windows-exe
-          path: ${{ env.RELEASE_ASSET }}
+          name: ChronicleMap-windows-packages
+          path: |
+            ${{ env.RELEASE_ASSET_ONEFILE }}
+            ${{ env.RELEASE_ASSET_ONEDIR }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.RELEASE_ASSET }}
+          files: |
+            ${{ env.RELEASE_ASSET_ONEFILE }}
+            ${{ env.RELEASE_ASSET_ONEDIR }}
           generate_release_notes: true
