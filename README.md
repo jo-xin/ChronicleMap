@@ -17,8 +17,8 @@ Icon path:
 Build command:
 
 ```powershell
-poetry run pip install pyinstaller
-poetry run pyinstaller --noconfirm --clean --windowed --onefile --name ChronicleMap --icon assets/icons/chroniclemap.ico --collect-data chroniclemap chroniclemap/gui/__main__.py
+poetry install
+poetry run python -m PyInstaller --noconfirm --clean --windowed --onefile --name ChronicleMap --icon assets/icons/chroniclemap.ico --collect-all PySide6 --collect-submodules PySide6 --collect-data chroniclemap chroniclemap/gui/__main__.py
 ```
 
 Output:
@@ -76,4 +76,3 @@ poetry run pytest tests/test_campaign_manager.py -q
 
 
 import pdb; pdb.set_trace()  # ← 在这里设置断点
-

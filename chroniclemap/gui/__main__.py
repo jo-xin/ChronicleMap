@@ -4,9 +4,9 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from .campaign_manager import CampaignManagerView
-from .campaign_store import CampaignStore
-from .texts import set_locale
+from chroniclemap.gui.campaign_manager import CampaignManagerView
+from chroniclemap.gui.campaign_store import CampaignStore
+from chroniclemap.gui.texts import set_locale
 
 
 def main():

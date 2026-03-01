@@ -29,9 +29,6 @@ jobs:
           poetry config virtualenvs.create false
           poetry install --no-interaction --no-ansi
 
-      - name: Install PyInstaller
-        run: poetry run pip install pyinstaller
-
       - name: Resolve release version from tag
         run: |
           "VERSION=$($env:GITHUB_REF_NAME.TrimStart('v'))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -65,13 +62,15 @@ jobs:
 
       - name: Build Windows executable
         run: |
-          poetry run pyinstaller `
+          poetry run python -m PyInstaller `
             --noconfirm `
             --clean `
             --windowed `
             --onefile `
             --name ChronicleMap `
             --icon assets/icons/chroniclemap.ico `
+            --collect-all PySide6 `
+            --collect-submodules PySide6 `
             --collect-data chroniclemap `
             chroniclemap/gui/__main__.py
 

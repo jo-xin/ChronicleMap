@@ -20,6 +20,7 @@ mypy = "^1.2"
 pre-commit = "^3.0"
 coverage = "^7.0"
 pytest-qt = "^4.5.0"
+pyinstaller = "^6.16.0"
 
 [build-system]
 requires = ["poetry-core"]
